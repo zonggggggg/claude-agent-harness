@@ -1,6 +1,6 @@
 {
   "name": "dev-team",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "多角色開發團隊：需求分析、架構、前後端、測試、code review、資安、驗收，搭配有人類關卡的開發流程與 harness hooks。",
   "author": {
     "name": "ziv_huang"
