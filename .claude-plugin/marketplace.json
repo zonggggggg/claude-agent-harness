@@ -1,0 +1,14 @@
+{
+  "name": "workshop-local",
+  "description": "本機 D:\\workshop 的 Claude Code plugin",
+  "owner": {
+    "name": "ziv_huang"
+  },
+  "plugins": [
+    {
+      "name": "dev-team",
+      "source": "./",
+      "description": "多角色開發團隊與 harness（本機開發用）"
+    }
+  ]
+}

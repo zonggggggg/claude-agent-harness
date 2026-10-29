@@ -1,0 +1,98 @@
+// 檢查 plugin 結構：agent / skill frontmatter 合法、名稱唯一、
+// skill 提到的角色都存在、hooks.json 指到的腳本都存在。
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+
+const KNOWN_TOOLS = new Set([
+  'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'Bash', 'PowerShell',
+  'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent', 'Skill', 'TodoWrite',
+]);
+const KNOWN_MODELS = new Set(['inherit', 'opus', 'sonnet', 'haiku', 'fable']);
+
+function frontmatter(file) {
+  const text = readFileSync(file, 'utf8');
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  assert.ok(m, `${file} 缺少 frontmatter`);
+  const fields = {};
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = line.match(/^([\w-]+):\s*(.*)$/);
+    if (kv) fields[kv[1]] = kv[2].replace(/^"(.*)"$/, '$1');
+  }
+  return { fields, body: m[2] };
+}
+
+const agentFiles = readdirSync(join(ROOT, 'agents')).filter((f) => f.endsWith('.md'));
+const agents = agentFiles.map((f) => ({ file: f, ...frontmatter(join(ROOT, 'agents', f)) }));
+const agentNames = new Set(agents.map((a) => a.fields.name));
+
+test('至少有核心角色', () => {
+  for (const role of ['requirements-analyst', 'architect', 'backend-engineer', 'frontend-engineer',
+    'test-engineer', 'code-reviewer', 'security-reviewer', 'verifier']) {
+    assert.ok(agentNames.has(role), `缺少 ${role}`);
+  }
+});
+
+test('每個 agent 都有 name / description，且 name 與檔名一致', () => {
+  for (const a of agents) {
+    assert.ok(a.fields.name, `${a.file} 缺 name`);
+    assert.ok(a.fields.description?.length > 20, `${a.file} description 太短`);
+    assert.equal(`${a.fields.name}.md`, a.file);
+    assert.ok(a.body.trim().length > 200, `${a.file} system prompt 太短`);
+  }
+  assert.equal(agentNames.size, agents.length, 'agent name 重複');
+});
+
+test('tools / model 只用已知值', () => {
+  for (const a of agents) {
+    for (const key of ['tools', 'disallowedTools']) {
+      if (!a.fields[key]) continue;
+      for (const t of a.fields[key].split(',').map((s) => s.trim())) {
+        assert.ok(KNOWN_TOOLS.has(t), `${a.file} ${key} 有未知工具 ${t}`);
+      }
+    }
+    if (a.fields.model) assert.ok(KNOWN_MODELS.has(a.fields.model), `${a.file} model 未知`);
+  }
+});
+
+test('reviewer 與 verifier 是唯讀（沒有 Write / Edit）', () => {
+  for (const a of agents.filter((x) => /reviewer|verifier/.test(x.fields.name))) {
+    const tools = (a.fields.tools ?? '').split(',').map((s) => s.trim());
+    assert.ok(a.fields.tools, `${a.file} 必須明確列出 tools`);
+    assert.ok(!tools.includes('Write') && !tools.includes('Edit'), `${a.file} 不應有寫入權限`);
+  }
+});
+
+test('skills 有合法 frontmatter，且提到的角色都存在', () => {
+  for (const dir of readdirSync(join(ROOT, 'skills'))) {
+    const { fields, body } = frontmatter(join(ROOT, 'skills', dir, 'SKILL.md'));
+    assert.equal(fields.name, dir);
+    assert.ok(fields.description);
+    for (const [, name] of body.matchAll(/`([a-z]+(?:-[a-z]+)+)`/g)) {
+      if (/(engineer|reviewer|analyst)$/.test(name)) assert.ok(agentNames.has(name), `${dir} 引用了不存在的 ${name}`);
+    }
+  }
+  assert.ok(existsSync(join(ROOT, 'skills', 'feature', 'templates', 'spec.md')));
+  assert.ok(existsSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md')));
+});
+
+test('hooks.json 指到的腳本都存在', () => {
+  const hooks = JSON.parse(readFileSync(join(ROOT, 'hooks', 'hooks.json'), 'utf8')).hooks;
+  const commands = Object.values(hooks).flat().flatMap((g) => g.hooks).map((h) => h.command);
+  assert.ok(commands.length > 0);
+  for (const cmd of commands) {
+    const m = cmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)/);
+    assert.ok(m, `無法解析 ${cmd}`);
+    assert.ok(existsSync(join(ROOT, m[1])), `找不到 ${m[1]}`);
+  }
+});
+
+test('plugin.json 與 marketplace.json 名稱一致', () => {
+  const plugin = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8'));
+  const market = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
+  assert.ok(market.plugins.some((p) => p.name === plugin.name));
+});

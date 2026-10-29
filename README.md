@@ -1,0 +1,113 @@
+# dev-team：Claude Code 多角色開發團隊 + Harness
+
+一個本機 Claude Code **plugin**，裡面有 9 個角色（subagent）、2 個流程指令（skill），以及保護和紀錄用的 hooks。
+
+```
+你 ──> /dev-team:feature <需求>
+         │  主 session = 總指揮（orchestrator），不寫產品程式碼
+         ▼
+  requirements-analyst ──> spec.md（AC 驗收條件）   🚦 關卡 A：你確認規格
+         ▼
+  architect ──> design.md（API 契約、任務拆分）      🚦 關卡 B：你確認設計
+         ▼
+  backend-engineer ║ frontend-engineer（契約定好就平行做）
+         ▼
+  test-engineer ──> test-report.md（失敗 → 退回工程師，最多 3 輪）
+         ▼
+  code-reviewer ║ security-reviewer（唯讀，平行審）
+         ▼
+  verifier ──> verify.md（獨立重跑測試、逐條核對 AC）
+         ▼
+  你決定 commit（git add 後可用 staged-change-reviewer 做最後把關）
+```
+
+## 角色
+
+| 角色 | 權限 | 做什麼 |
+|------|------|--------|
+| `requirements-analyst` | 讀 + 寫文件 | 需求 → 可驗收的 spec，列出要問你的問題 |
+| `architect` | 讀 + 寫文件 | spec → 設計、API 契約、`[BE]`/`[FE]`/`[TEST]` 任務 |
+| `backend-engineer` | 完整 | 實作後端任務 + unit test |
+| `frontend-engineer` | 完整 | 實作前端任務 + 測試 |
+| `test-engineer` | 完整（但不改產品碼） | 依 AC 寫測試、找缺陷 |
+| `code-reviewer` | **唯讀** | 對照 spec 審查改動 |
+| `security-reviewer` | **唯讀** | 資安審查 |
+| `verifier` | **唯讀** | 沒參與開發，獨立驗收 |
+| `staged-change-reviewer` | **唯讀** | commit 前審 staged diff（取自 `claude-code-kit`，這裡改成唯讀） |
+
+工程師和測試角色不能再開 subagent（`disallowedTools: Agent`），任務一律由總指揮分派，避免角色自己越級分工。
+
+## 安裝
+
+**先試用（不安裝，只在這次 session 生效）：**
+
+```bash
+claude --plugin-dir "D:/workshop/claude-agent-harness"
+```
+
+**正式安裝（之後所有專案都能用）：**
+
+```bash
+claude plugin marketplace add "D:/workshop/claude-agent-harness"
+```
+
+```bash
+claude plugin install dev-team@workshop-local
+```
+
+改了這個資料夾的內容之後要更新：
+
+```bash
+claude plugin marketplace update workshop-local
+```
+
+不想要時：`claude plugin uninstall dev-team`。
+
+**只想要某幾個角色、放在單一專案：** 把 `agents/` 裡的 `.md` 複製到該專案的 `.claude/agents/`。這樣名稱不會帶 `dev-team:` 前綴，但也不會有 hooks。
+
+## 使用
+
+| 你要做的 | 怎麼下 |
+|---------|--------|
+| 完整流程做一個功能 | `/dev-team:feature 訂單列表加上依狀態篩選` |
+| 只要 review 目前改動 | `/dev-team:team-review` |
+| 單獨叫一個角色 | 「用 dev-team:architect 幫我評估把 session 改成 JWT 的影響」 |
+
+所有產出放在專案的 `docs/specs/<日期>-<slug>/`：`request.md`、`spec.md`、`design.md`、`test-report.md`、`verify.md`。
+subagent 看不到你和總指揮的對話，**角色之間只靠這些檔案交接**，所以它們也是之後回頭查的紀錄。
+
+## Harness（hooks）
+
+| Hook | 作用 |
+|------|------|
+| `PreToolUse`（Edit/Write） | 擋下寫入 `.env*`（範例檔除外）、`*.pem`/`*.key`、SSH key、`credentials*.json`、`secrets.*`、`.npmrc`、`.git/` 內部檔。真的要改就用 `DEV_TEAM_ALLOW_SENSITIVE=1` 啟動 Claude，或自己手動改 |
+| `SubagentStart` / `SubagentStop` | 每個角色的啟動、結束和回報摘要記到 `<專案>/.claude/dev-team/activity.jsonl` |
+
+建議在各專案的 `.gitignore` 加上 `.claude/dev-team/`。
+
+> 安裝 plugin 後這些 hooks 對**所有 session** 都會生效，不只在 `/dev-team:feature` 裡。
+
+## 客製化
+
+- **模型**：預設都是 `model: inherit`（跟主 session 同一個模型）。想省成本，可以把 reviewer 或 verifier 改成 `sonnet`、`haiku`，或寫完整的 model ID。
+  注意：PATH 上的 `claude` CLI 版本較舊時（目前是 2.1.133），`opus` 這個別名會對應到你環境用不了的舊模型，subagent 會直接失敗。這也是預設用 `inherit` 的原因。
+- **加角色**：在 `agents/` 新增 `.md`（frontmatter 至少要有 `name`、`description`），再到 `skills/feature/SKILL.md` 的流程裡加一個階段。常見的擴充有 `devops-engineer`（CI/CD、容器）、`db-engineer`（migration、索引）、`docs-writer`（README、API 文件）、`debugger`（重現與根因分析）。
+- **改流程**：直接改 `skills/feature/SKILL.md`。這是一般的 Markdown，總指揮會照著執行。
+
+## 開發這個 plugin
+
+```bash
+npm test --prefix "D:/workshop/claude-agent-harness"
+```
+
+```bash
+claude plugin validate "D:/workshop/claude-agent-harness/.claude-plugin/plugin.json"
+```
+
+測試涵蓋：agent/skill 的 frontmatter 是否合法、名稱是否唯一、唯讀角色有沒有寫入權限、skill 引用的角色是否存在、hooks 腳本實際執行的行為。
+
+## 已知限制
+
+- `CLAUDE.md` 和 skill 裡寫的流程是**軟性**的：模型多半會照做，但不保證。需要「每次一定執行」的檢查要用 hook。
+- Subagent 無法直接問你問題。需求分析師會把問題交回總指揮，再由總指揮問你。
+- 前後端平行開發時，如果會改到同一批檔案，總指揮會改成依序進行。真的要隔離的話，可以在 agent frontmatter 加 `isolation: worktree`（需要 git repo）。
