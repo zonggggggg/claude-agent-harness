@@ -80,6 +80,46 @@ test('skills 有合法 frontmatter，且提到的角色都存在', () => {
   assert.ok(existsSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md')));
 });
 
+test('feature 流程是測試先行：紅燈測試階段排在實作階段之前', () => {
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  const stages = [...body.matchAll(/^### 階段 (\d+)：(.+)$/gm)].map(([, n, title]) => ({ n: Number(n), title }));
+  const red = stages.find((s) => s.title.includes('紅燈'));
+  const impl = stages.find((s) => s.title.startsWith('實作'));
+  assert.ok(red, '缺少紅燈測試階段');
+  assert.ok(impl, '缺少實作階段');
+  assert.ok(red.n < impl.n, `紅燈測試（階段 ${red.n}）必須在實作（階段 ${impl.n}）之前`);
+  assert.deepEqual(stages.map((s) => s.n), stages.map((_, i) => i), '階段編號要從 0 連續');
+  assert.match(body, /## Bug 修復模式/);
+});
+
+test('test-engineer 有 RED 與 VERIFY 兩種模式', () => {
+  const { fields, body } = agents.find((a) => a.fields.name === 'test-engineer');
+  assert.match(fields.description, /RED/);
+  assert.match(body, /## RED 模式/);
+  assert.match(body, /## VERIFY 模式/);
+});
+
+test('工程師角色要求 TDD、回報紅燈 / 綠燈證據、不可改驗收測試', () => {
+  for (const name of ['backend-engineer', 'frontend-engineer']) {
+    const { body } = agents.find((a) => a.fields.name === name);
+    assert.match(body, /## 測試先行（TDD）/, `${name} 缺少 TDD 段落`);
+    assert.match(body, /\*\*RED 證據\*\*/, `${name} 回報缺 RED 證據`);
+    assert.match(body, /\*\*GREEN 證據\*\*/, `${name} 回報缺 GREEN 證據`);
+    assert.match(body, /不修改 test-engineer 寫的驗收測試/, `${name} 缺少驗收測試鎖定紅線`);
+  }
+});
+
+test('design 範本的第一個任務是 TEST，實作任務依賴它', () => {
+  const text = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md'), 'utf8');
+  const rows = [...text.matchAll(/^\| \[ \] \| (T\d+)[^|]*\| (\w+) \|[^|]*\| ([^|]*) \|$/gm)]
+    .map(([, id, role, deps]) => ({ id, role, deps }));
+  assert.ok(rows.length >= 2, '任務清單解析不到');
+  assert.equal(rows[0].role, 'TEST');
+  for (const r of rows.filter((x) => x.role === 'BE' || x.role === 'FE')) {
+    assert.ok(r.deps.includes(rows[0].id), `${r.id} 沒有依賴 ${rows[0].id}`);
+  }
+});
+
 test('hooks.json 指到的腳本都存在', () => {
   const hooks = JSON.parse(readFileSync(join(ROOT, 'hooks', 'hooks.json'), 'utf8')).hooks;
   const commands = Object.values(hooks).flat().flatMap((g) => g.hooks).map((h) => h.command);

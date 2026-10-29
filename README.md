@@ -10,9 +10,11 @@
          ▼
   architect ──> design.md（API 契約、任務拆分）      🚦 關卡 B：你確認設計
          ▼
-  backend-engineer ║ frontend-engineer（契約定好就平行做）
+  test-engineer [RED] ──> 紅燈驗收測試（實作前先寫、先跑出紅燈）
          ▼
-  test-engineer ──> test-report.md（失敗 → 退回工程師，最多 3 輪）
+  backend-engineer ║ frontend-engineer（RED → GREEN → REFACTOR，讓驗收測試變綠）
+         ▼
+  test-engineer [VERIFY] ──> test-report.md（補邊界、跑全套件；失敗 → 退回工程師，最多 3 輪）
          ▼
   code-reviewer ║ security-reviewer（唯讀，平行審）
          ▼
@@ -26,16 +28,25 @@
 | 角色 | 權限 | 做什麼 |
 |------|------|--------|
 | `requirements-analyst` | 讀 + 寫文件 | 需求 → 可驗收的 spec，列出要問你的問題 |
-| `architect` | 讀 + 寫文件 | spec → 設計、API 契約、`[BE]`/`[FE]`/`[TEST]` 任務 |
-| `backend-engineer` | 完整 | 實作後端任務 + unit test |
-| `frontend-engineer` | 完整 | 實作前端任務 + 測試 |
-| `test-engineer` | 完整（但不改產品碼） | 依 AC 寫測試、找缺陷 |
+| `architect` | 讀 + 寫文件 | spec → 設計、API 契約、`[TEST]`（先）/`[BE]`/`[FE]` 任務 |
+| `test-engineer` | 完整（但不改產品碼） | **先寫測試的人**：實作前依 AC 寫紅燈驗收測試，實作後驗證、找缺陷 |
+| `backend-engineer` | 完整 | 以 TDD 實作後端任務 + unit test，附紅燈 / 綠燈證據 |
+| `frontend-engineer` | 完整 | 以 TDD 實作前端任務 + 測試，附紅燈 / 綠燈證據 |
 | `code-reviewer` | **唯讀** | 對照 spec 審查改動 |
 | `security-reviewer` | **唯讀** | 資安審查 |
 | `verifier` | **唯讀** | 沒參與開發，獨立驗收 |
 | `staged-change-reviewer` | **唯讀** | commit 前審 staged diff（取自 `claude-code-kit`，這裡改成唯讀） |
 
 工程師和測試角色不能再開 subagent（`disallowedTools: Agent`），任務一律由總指揮分派，避免角色自己越級分工。
+
+### 測試先行（TDD）
+
+流程採兩層 TDD，概念參考 [obra/superpowers](https://github.com/obra/superpowers) 的 `test-driven-development` / `writing-plans` / `systematic-debugging`：
+
+- **外層**：`test-engineer` 在實作前依 AC 寫驗收測試並跑出紅燈；這批測試鎖定，工程師不能改。
+- **內層**：工程師每段行為都走 RED → GREEN → REFACTOR，回報要附紅燈與綠燈的實際輸出。
+- **Bug 修復**：先寫出重現 bug 的紅燈測試（重現不了就停），工程師先找根因再修，同一個 bug 修 3 次不過就停下回報。
+- 純設定、migration、自動產生的程式、純樣式可以列為「TDD 例外」，由你決定是否接受。
 
 ## 安裝
 
