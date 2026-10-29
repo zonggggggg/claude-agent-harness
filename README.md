@@ -84,7 +84,8 @@ claude plugin marketplace update workshop-local
 | 只要 review 目前改動 | `/dev-team:team-review` |
 | 單獨叫一個角色 | 「用 dev-team:architect 幫我評估把 session 改成 JWT 的影響」 |
 
-所有產出放在專案的 `docs/specs/<日期>-<slug>/`：`request.md`、`spec.md`、`design.md`、`test-report.md`、`verify.md`。
+所有產出放在專案的 `docs/specs/<日期>-<slug>/`：`request.md`、`spec.md`、`design.md`、`test-report.md`、`verify.md`，以及總指揮的進度檔 `progress.md`（目前階段、關卡確認、重修輪數、你做過的決定）。
+對話被壓縮或換 session 時，說「接續 `docs/specs/<日期>-<slug>`」，總指揮會先讀 `progress.md` 從中斷的地方繼續。
 subagent 看不到你和總指揮的對話，**角色之間只靠這些檔案交接**，所以它們也是之後回頭查的紀錄。
 
 ## Harness（hooks）

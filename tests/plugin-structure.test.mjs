@@ -120,6 +120,21 @@ test('design 範本的第一個任務是 TEST，實作任務依賴它', () => {
   }
 });
 
+test('feature 流程用 progress.md 記錄進度，且輪數上限與範本一致', () => {
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  const template = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'progress.md'), 'utf8');
+  assert.match(body, /\*\*進度檔 `progress\.md`\*\*/);
+  assert.match(body, /\*\*接續既有工作\*\*/);
+  assert.match(body, /\*\*先讀 `progress\.md`\*\*/);
+
+  const section = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
+  const cap = (text) => Number(text.match(/最多(?:來回)? (\d+) (?:輪|次)/)?.[1]);
+  const templateCap = (label) => Number(template.match(new RegExp(`\\| ${label}[^|]*\\| 0 / (\\d+) \\|`))?.[1]);
+  assert.equal(templateCap('需求釐清'), cap(section(1)));
+  assert.equal(templateCap('測試驗證退回'), cap(section(5)));
+  assert.equal(templateCap('Review 退回'), cap(section(6)));
+});
+
 test('hooks.json 指到的腳本都存在', () => {
   const hooks = JSON.parse(readFileSync(join(ROOT, 'hooks', 'hooks.json'), 'utf8')).hooks;
   const commands = Object.values(hooks).flat().flatMap((g) => g.hooks).map((h) => h.command);

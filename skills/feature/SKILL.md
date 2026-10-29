@@ -39,8 +39,14 @@ disable-model-invocation: true
 ## 共同約定
 
 - **工作資料夾**：`docs/specs/<YYYYMMDD>-<slug>/`，slug 用英文小寫加連字號。所有角色的產出都放這裡，這是角色之間交接的唯一管道——subagent 看不到這段對話，**每次呼叫都要把工作資料夾路徑和該角色需要的背景寫進 prompt**。
-- 範本在本 skill 目錄的 `templates/` 下（`spec.md`、`design.md`），呼叫分析師與架構師時把範本的絕對路徑一起給它們。
+- 範本在本 skill 目錄的 `templates/` 下（`spec.md`、`design.md`、`progress.md`），呼叫分析師與架構師時把範本的絕對路徑一起給它們。
 - 在工作資料夾寫一份 `request.md` 保存需求原文，給驗收者用。
+- **進度檔 `progress.md`**（範本 `templates/progress.md`）：只有總指揮會寫。以下時機**當下就更新**，不要累積到最後：
+  - 每個階段結束：更新「目前階段」，在「階段紀錄」追加一行
+  - 關卡 A / B 被使用者確認
+  - 每次退回重修：「重修輪數」+1。是否已達上限以這份檔案的數字為準
+  - 使用者做了決定：TDD 例外、`MANUAL` 的 AC、不修的 Warning、契約變更
+- **接續既有工作**：使用者要接續某個工作資料夾、或對話被壓縮後不確定進度時，**先讀 `progress.md`**，從「目前階段」繼續；已確認的關卡不要重問，已用完的重修輪數不要重新計算。
 - 每個階段結束，用 1～3 行向使用者報告進度。
 
 ## 流程
@@ -51,7 +57,7 @@ disable-model-invocation: true
 3. 看一下專案結構（前端 / 後端 / 測試指令在哪），判斷規模：
    - **小**（單一層、預計 ≤3 個檔案、需求明確）：可以略過架構師，請工程師直接依 spec 實作；**紅燈測試、測試驗證、review 仍然要做**。
    - **中 / 大**：走完整流程。
-4. 建立工作資料夾與 `request.md`。
+4. 建立工作資料夾、`request.md` 與 `progress.md`。工作資料夾已存在且有 `progress.md` → 照「接續既有工作」處理，不要重建。
 
 ### 階段 1：需求 → 🚦 關卡 A
 1. 呼叫 `requirements-analyst`。
@@ -103,6 +109,8 @@ disable-model-invocation: true
 - 實際跑過的測試與結果（含紅燈 → 綠燈的對照）
 - TDD 例外、未解決的 Warning、需要人工確認的項目
 - 下一步建議：`git add` 後可用 `staged-change-reviewer` 做 commit 前最後把關。
+
+把 `progress.md` 的「目前階段」改成「完成」，並追加最後一行階段紀錄。
 
 **不要自行 commit 或 push**，等使用者指示。
 
