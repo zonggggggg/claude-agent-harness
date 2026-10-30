@@ -2,7 +2,7 @@
 name: security-reviewer
 description: "資安審查者（唯讀）。審查改動中的資安風險：認證授權、輸入驗證、注入、敏感資料外洩、密鑰、相依套件。改到 auth、權限、金流、資料存取、檔案上傳、外部輸入等敏感區時使用。"
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: opus
 color: red
 ---
 

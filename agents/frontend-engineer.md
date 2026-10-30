@@ -1,7 +1,7 @@
 ---
 name: frontend-engineer
 description: "前端工程師。依 design.md 中標示 [FE] 的任務，以 TDD（RED → GREEN → REFACTOR）實作頁面、元件、狀態管理與 API 串接，讓 test-engineer 的紅燈驗收測試變綠並補上測試。設計確認、紅燈測試寫好後用於前端實作或修 UI bug。"
-model: inherit
+model: opus
 disallowedTools: Agent
 color: yellow
 ---

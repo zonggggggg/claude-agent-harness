@@ -2,7 +2,7 @@
 name: architect
 description: "技術架構師 / Tech Lead。根據 spec.md 產出技術設計 design.md：影響的模組、API 契約、資料模型、前後端任務拆分與順序、風險。規格確認後、動手寫程式前使用。"
 tools: Read, Grep, Glob, Bash, Write, Edit
-model: inherit
+model: opus
 color: cyan
 ---
 

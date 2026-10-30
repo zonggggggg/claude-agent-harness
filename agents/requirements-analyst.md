@@ -2,7 +2,7 @@
 name: requirements-analyst
 description: "需求分析師（PM/BA）。把模糊的需求轉成可驗收的規格 spec.md：使用者故事、驗收條件（AC）、範圍外事項、待釐清問題。新功能或需求不清楚時，在任何設計或實作之前先用它。"
 tools: Read, Grep, Glob, Write, Edit
-model: inherit
+model: opus
 color: purple
 ---
 

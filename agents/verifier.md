@@ -2,7 +2,7 @@
 name: verifier
 description: "獨立驗收者。沒參與開發過程，只拿原始需求、spec.md 與實際程式去逐條核對 AC 是否真的達成，並親自重跑測試取得證據，產出 verify.md。所有實作、測試、review 完成後的最後一關使用。"
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: opus
 color: pink
 ---
 

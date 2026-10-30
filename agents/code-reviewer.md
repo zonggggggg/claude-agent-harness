@@ -2,7 +2,7 @@
 name: code-reviewer
 description: "程式碼審查者（唯讀）。對照 spec.md / design.md 審查 working tree 的改動：正確性、bug、邊界條件、regression 風險、與既有 pattern 的一致性、測試是否足夠。測試通過後、commit 前使用。"
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: opus
 color: blue
 ---
 

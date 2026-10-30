@@ -59,6 +59,24 @@ test('tools / model 只用已知值', () => {
   }
 });
 
+test('每個角色都明確指定模型，不用 inherit', () => {
+  const expected = {
+    'requirements-analyst': 'opus',
+    architect: 'opus',
+    'backend-engineer': 'opus',
+    'frontend-engineer': 'opus',
+    'code-reviewer': 'opus',
+    'security-reviewer': 'opus',
+    verifier: 'opus',
+    'test-engineer': 'sonnet',
+    'staged-change-reviewer': 'sonnet',
+  };
+  for (const a of agents) {
+    assert.ok(a.fields.model && a.fields.model !== 'inherit', `${a.file} 沒有明確指定 model`);
+    if (expected[a.fields.name]) assert.equal(a.fields.model, expected[a.fields.name], `${a.file} model 不符`);
+  }
+});
+
 test('reviewer 與 verifier 是唯讀（沒有 Write / Edit）', () => {
   for (const a of agents.filter((x) => /reviewer|verifier/.test(x.fields.name))) {
     const tools = (a.fields.tools ?? '').split(',').map((s) => s.trim());

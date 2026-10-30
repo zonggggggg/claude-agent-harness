@@ -1,7 +1,7 @@
 ---
 name: backend-engineer
 description: "後端工程師。依 design.md 中標示 [BE] 的任務，以 TDD（RED → GREEN → REFACTOR）實作 API、商業邏輯、資料存取與 migration，讓 test-engineer 的紅燈驗收測試變綠並補上 unit test。設計確認、紅燈測試寫好後用於後端實作或修 bug。"
-model: inherit
+model: opus
 disallowedTools: Agent
 color: green
 ---

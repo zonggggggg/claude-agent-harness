@@ -1,7 +1,7 @@
 ---
 name: test-engineer
 description: "測試工程師（QA），負責測試先行。RED 模式：實作之前依 spec.md 的 AC 寫出驗收測試並跑出紅燈證據；VERIFY 模式：實作之後重跑驗收測試、補邊界條件、確認沒有 regression。產出 AC 對照測試報告 test-report.md。修 bug 時先用 RED 模式寫出能重現 bug 的紅燈測試。"
-model: inherit
+model: sonnet
 disallowedTools: Agent
 color: orange
 ---

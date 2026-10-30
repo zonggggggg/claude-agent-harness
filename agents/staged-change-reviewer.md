@@ -2,7 +2,7 @@
 name: staged-change-reviewer
 description: "Use this agent before a commit to review the staged changes for bugs, logic errors, security issues, regression risk, and commit hygiene. Invoke it proactively whenever staged changes are ready to commit, or when the user explicitly asks for a pre-commit review."
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: sonnet
 color: blue
 ---
 
