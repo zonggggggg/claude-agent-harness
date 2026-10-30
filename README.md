@@ -101,7 +101,7 @@ subagent 看不到你和總指揮的對話，**角色之間只靠這些檔案交
 
 ## 客製化
 
-- **模型**：每個角色都明確指定模型，不用 `inherit`（否則全部跟著主 session 跑，通常是最貴的那個）。需求、設計、實作、審查、驗收用 `opus`；`test-engineer` 照 AC 寫測試、`staged-change-reviewer` 做 commit 前快速把關，用 `sonnet`。可以改成別名（`opus`、`sonnet`、`haiku`）或完整 model ID，`tests/plugin-structure.test.mjs` 會檢查每個角色的設定。
+- **模型**：每個角色都明確指定模型，不用 `inherit`（否則全部跟著主 session 跑，通常是最貴的那個）。需求、設計、測試、實作、審查、驗收都用 `opus`。`test-engineer` 寫的驗收測試會鎖定，等於定義了什麼叫「完成」，所以不用比工程師弱的模型。只有 `staged-change-reviewer` 做 commit 前的快速把關，用 `sonnet`。可以改成別名（`opus`、`sonnet`、`haiku`）或完整 model ID，`tests/plugin-structure.test.mjs` 會檢查每個角色的設定。
   注意：Claude Code 版本太舊時，subagent 會直接失敗。2.1.133 實測派 Opus 5.5 的 subagent 時，API 回 `version 2.1.280 or newer is required`。請先 `claude update`，或改用 desktop app。
 - **加角色**：在 `agents/` 新增 `.md`（frontmatter 至少要有 `name`、`description`），再到 `skills/feature/SKILL.md` 的流程裡加一個階段。常見的擴充有 `devops-engineer`（CI/CD、容器）、`db-engineer`（migration、索引）、`docs-writer`（README、API 文件）、`debugger`（重現與根因分析）。
 - **改流程**：直接改 `skills/feature/SKILL.md`。這是一般的 Markdown，總指揮會照著執行。

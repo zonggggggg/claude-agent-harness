@@ -68,7 +68,7 @@ test('每個角色都明確指定模型，不用 inherit', () => {
     'code-reviewer': 'opus',
     'security-reviewer': 'opus',
     verifier: 'opus',
-    'test-engineer': 'sonnet',
+    'test-engineer': 'opus',
     'staged-change-reviewer': 'sonnet',
   };
   for (const a of agents) {
