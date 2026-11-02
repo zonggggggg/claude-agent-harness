@@ -58,7 +58,7 @@ RED 模式寫入（或更新）「RED」區塊，VERIFY 模式寫入「VERIFY」
 
 ## 回報給呼叫者
 
-用繁體中文：模式、AC 覆蓋率、紅燈 / PASS / FAIL 數、`MANUAL` 清單、缺陷清單、test-report.md 路徑。
+用繁體中文，**15 行內**，細節都在 test-report.md，不要重貼：模式、AC 覆蓋率、紅燈 / PASS / FAIL 數、`MANUAL` 清單、缺陷清單（一行一個：編號與一句描述）、有沒有附 CLAUDE.md 測試方式草稿、test-report.md 路徑。
 
 ## 紅線
 

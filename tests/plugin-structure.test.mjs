@@ -163,6 +163,42 @@ test('專案 CLAUDE.md 的「測試方式」只摸索一次：先讀、跑通後
   assert.match(tester, /你不改 `CLAUDE\.md`/, 'test-engineer 不應自行改 CLAUDE.md');
 });
 
+test('總指揮精簡：派工不貼歷史、回報短細節進檔案、有工作界線與裁決紀錄', () => {
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  assert.match(body, /\*\*派工 prompt 只放這個角色需要的東西\*\*/);
+  assert.match(body, /\*\*不貼對話歷史、前面角色的完整回報或檔案內容\*\*/);
+  assert.match(body, /\*\*回報短、細節進檔案\*\*/);
+  assert.match(body, /\*\*總指揮的工作界線\*\*/);
+  assert.match(body, /總指揮裁決/);
+  const section = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
+  assert.match(section(4), /回報檔路徑/, '階段 4 派工要給工程師回報檔路徑');
+  assert.match(section(6), /只確認這些是否解決/, '階段 6 再 review 要限縮範圍');
+  assert.match(section(8), /\*\*建議使用者開新 session\*\*/, '階段 8 要提醒開新 session');
+
+  const template = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'progress.md'), 'utf8');
+  assert.match(template, /^## 總指揮裁決$/m, 'progress 範本缺少「總指揮裁決」');
+});
+
+test('寫入型角色回報 15 行內，工程師把完整內容寫進回報檔並回狀態值', () => {
+  for (const name of ['requirements-analyst', 'architect', 'test-engineer', 'backend-engineer', 'frontend-engineer']) {
+    const { body } = agents.find((a) => a.fields.name === name);
+    const report = body.split(/^## /m).find((s) => s.startsWith('回報給呼叫者')) ?? '';
+    assert.match(report, /\*\*15 行內\*\*/, `${name} 回報沒有長度限制`);
+  }
+  for (const name of ['backend-engineer', 'frontend-engineer']) {
+    const { body } = agents.find((a) => a.fields.name === name);
+    assert.match(body, /^## 回報檔：.*`<工作資料夾>\/reports\//m, `${name} 缺少回報檔`);
+    assert.match(body, /`DONE` \/ `DONE_WITH_CONCERNS` \/ `BLOCKED` \/ `NEEDS_CONTEXT`/, `${name} 缺少狀態值`);
+  }
+});
+
+test('唯讀角色回報只寫結論與發現，不重述程式碼', () => {
+  for (const name of ['code-reviewer', 'security-reviewer', 'verifier']) {
+    const { body } = agents.find((a) => a.fields.name === name);
+    assert.match(body, /不重述程式碼/, `${name} 沒有限制回報內容`);
+  }
+});
+
 test('feature 流程用 progress.md 記錄進度，且輪數上限與範本一致', () => {
   const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
   const template = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'progress.md'), 'utf8');
