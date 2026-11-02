@@ -192,6 +192,13 @@ test('寫入型角色回報 15 行內，工程師把完整內容寫進回報檔�
   }
 });
 
+test('進度檔一律從範本建立，退回時表格與階段紀錄同時更新，裁決寫在獨立段落', () => {
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  assert.match(body, /\*\*一律從範本建立，不要複製其他 task 的進度檔\*\*/);
+  assert.match(body, /\*\*表格和階段紀錄要同時更新\*\*/);
+  assert.match(body, /寫進「總指揮裁決」段落（不是混在階段紀錄裡）/);
+});
+
 test('修正後只補驗受影響處：工程師跑相關測試 + 一次完整測試，比對雜湊，不整套重派 VERIFY', () => {
   const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
   assert.match(body, /\*\*修正後的驗證\*\*/);
