@@ -63,12 +63,12 @@ test('每個角色都明確指定模型，不用 inherit', () => {
   const expected = {
     'requirements-analyst': 'opus',
     architect: 'opus',
-    'backend-engineer': 'opus',
-    'frontend-engineer': 'opus',
+    'backend-engineer': 'sonnet',
+    'frontend-engineer': 'sonnet',
     'code-reviewer': 'opus',
     'security-reviewer': 'opus',
     verifier: 'opus',
-    'test-engineer': 'opus',
+    'test-engineer': 'sonnet',
     'staged-change-reviewer': 'sonnet',
   };
   for (const a of agents) {
@@ -189,6 +189,33 @@ test('寫入型角色回報 15 行內，工程師把完整內容寫進回報檔�
     const { body } = agents.find((a) => a.fields.name === name);
     assert.match(body, /^## 回報檔：.*`<工作資料夾>\/reports\//m, `${name} 缺少回報檔`);
     assert.match(body, /`DONE` \/ `DONE_WITH_CONCERNS` \/ `BLOCKED` \/ `NEEDS_CONTEXT`/, `${name} 缺少狀態值`);
+  }
+});
+
+test('預期值可追溯：design 列關鍵斷言與來源，RED 照抄並標來源，總指揮與 verifier 檢查', () => {
+  const template = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md'), 'utf8');
+  const testing = template.split(/^## /m).find((s) => s.startsWith('測試策略')) ?? '';
+  assert.match(testing, /\| AC \| 關鍵斷言（具體預期值） \| 預期值來源 \|/, 'design 範本缺少關鍵斷言表');
+
+  const role = (name) => agents.find((a) => a.fields.name === name).body;
+  assert.match(role('architect'), /\*\*關鍵斷言\*\*/, 'architect 沒有要求寫關鍵斷言');
+  assert.match(role('test-engineer'), /\*\*預期值不憑記憶填\*\*/, 'test-engineer 沒有禁止憑記憶填預期值');
+  assert.match(role('test-engineer'), /\| 預期值來源`/, 'RED 對照表缺少預期值來源');
+  assert.match(role('verifier'), /測試太弱/, 'verifier 沒有把弱測試判為 FAIL');
+
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  const stage3 = body.split(/^### /m).find((s) => s.startsWith('階段 3：')) ?? '';
+  assert.match(stage3, /\*\*有預期值說不出來源\*\*/, '階段 3 要退回說不出來源的預期值');
+  assert.match(stage3, /關鍵斷言」列的斷言沒寫進測試/, '階段 3 要對照關鍵斷言');
+});
+
+test('sonnet 角色卡住時升級 opus，並記進裁決', () => {
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  assert.match(body, /\*\*卡住時升級模型\*\*/);
+  assert.match(body, /\*\*明確傳 `model: opus`\*\*/);
+  for (const name of agents.filter((a) => a.fields.model === 'sonnet').map((a) => a.fields.name)) {
+    if (name === 'staged-change-reviewer') continue;
+    assert.ok(body.includes(`\`${name}\``) || (name.endsWith('-engineer') && body.includes('工程師')), `升級規則沒涵蓋 ${name}`);
   }
 });
 

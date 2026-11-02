@@ -101,7 +101,8 @@ subagent 看不到你和總指揮的對話，**角色之間只靠這些檔案交
 
 ## 客製化
 
-- **模型**：每個角色都明確指定模型，不用 `inherit`（否則全部跟著主 session 跑，通常是最貴的那個）。需求、設計、測試、實作、審查、驗收都用 `opus`。`test-engineer` 寫的驗收測試會鎖定，等於定義了什麼叫「完成」，所以不用比工程師弱的模型。只有 `staged-change-reviewer` 做 commit 前的快速把關，用 `sonnet`。可以改成別名（`opus`、`sonnet`、`haiku`）或完整 model ID，`tests/plugin-structure.test.mjs` 會檢查每個角色的設定。
+- **模型**：每個角色都明確指定模型，不用 `inherit`（否則全部跟著主 session 跑，通常是最貴的那個）。負責「想」和「把關」的角色用 `opus`：總指揮（主 session，由你選）、`requirements-analyst`、`architect`、`code-reviewer`、`security-reviewer`、`verifier`。照規格「做」的角色用 `sonnet`：`backend-engineer`、`frontend-engineer`、`test-engineer`、`staged-change-reviewer`。
+  `test-engineer` 用 sonnet 的前提是預期值不由它決定：`architect` 在 design 的「關鍵斷言」寫出每條 AC 的具體預期值與來源，總指揮在 RED 後對照檢查，`verifier` 最後確認測試真的驗到 AC。工程師與 `test-engineer` 卡住時（RED 被退回第 2 次、`BLOCKED`、同一問題修一輪未解），總指揮下一次派工改傳 `model: opus`。可以改成別名（`opus`、`sonnet`、`haiku`）或完整 model ID，`tests/plugin-structure.test.mjs` 會檢查每個角色的設定。
   注意：Claude Code 版本太舊時，subagent 會直接失敗。2.1.133 實測派 Opus 5.5 的 subagent 時，API 回 `version 2.1.280 or newer is required`。請先 `claude update`，或改用 desktop app。
 - **專案測試方式**：在專案 `CLAUDE.md` 寫一段 `## 測試方式`，內容包括測試指令、執行環境、環境變數、需要的服務、已知會失敗的測試。architect 和 test-engineer 會先讀這段，不再每個功能重新摸索環境。沒有這段時，test-engineer 會在第一次 RED 跑通後提出草稿，總指揮問過你才寫入。
 - **加角色**：在 `agents/` 新增 `.md`（frontmatter 至少要有 `name`、`description`），再到 `skills/feature/SKILL.md` 的流程裡加一個階段。常見的擴充有 `devops-engineer`（CI/CD、容器）、`db-engineer`（migration、索引）、`docs-writer`（README、API 文件）、`debugger`（重現與根因分析）。
