@@ -138,6 +138,31 @@ test('design 範本的第一個任務是 TEST，實作任務依賴它', () => {
   }
 });
 
+test('design 範本寫明測試前置條件，任務細節有參照的既有實作', () => {
+  const text = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md'), 'utf8');
+  const testing = text.split(/^## /m).find((s) => s.startsWith('測試策略')) ?? '';
+  for (const item of ['只跑單一測試', '前置條件', '執行環境', '環境變數', '需要的服務']) {
+    assert.ok(testing.includes(item), `測試策略缺少「${item}」`);
+  }
+  const detail = text.split(/^## /m).find((s) => s.startsWith('任務細節')) ?? '';
+  assert.match(detail, /^- 參照：/m, '任務細節缺少「參照」欄位');
+});
+
+test('專案 CLAUDE.md 的「測試方式」只摸索一次：先讀、跑通後提草稿、使用者同意才寫入', () => {
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  assert.match(body, /\*\*專案測試方式\*\*/);
+  const stage3 = body.split(/^### /m).find((s) => s.startsWith('階段 3：')) ?? '';
+  assert.match(stage3, /\*\*使用者同意才寫入\*\*/, '階段 3 必須先問使用者才寫入 CLAUDE.md');
+
+  for (const name of ['architect', 'test-engineer']) {
+    const { body: agentBody } = agents.find((a) => a.fields.name === name);
+    assert.match(agentBody, /`CLAUDE\.md` 的「測試方式」段落/, `${name} 沒有先讀 CLAUDE.md 的測試方式`);
+  }
+  const { body: tester } = agents.find((a) => a.fields.name === 'test-engineer');
+  assert.match(tester, /建議加入 CLAUDE\.md 的測試方式/, 'test-engineer 缺少草稿產出');
+  assert.match(tester, /你不改 `CLAUDE\.md`/, 'test-engineer 不應自行改 CLAUDE.md');
+});
+
 test('feature 流程用 progress.md 記錄進度，且輪數上限與範本一致', () => {
   const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
   const template = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'progress.md'), 'utf8');
