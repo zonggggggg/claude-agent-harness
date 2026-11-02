@@ -192,6 +192,24 @@ test('寫入型角色回報 15 行內，工程師把完整內容寫進回報檔�
   }
 });
 
+test('修正後只補驗受影響處：工程師跑相關測試 + 一次完整測試，比對雜湊，不整套重派 VERIFY', () => {
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  assert.match(body, /\*\*修正後的驗證\*\*/);
+  assert.match(body, /\*\*不再重新派 `test-engineer` 做 VERIFY\*\*/);
+  assert.match(body, /\*\*限定範圍的 VERIFY\*\*/);
+  const section = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
+  assert.match(section(3), /git hash-object/, '階段 3 要記下驗收測試的雜湊值');
+  assert.match(section(5), /修正後的驗證/, '階段 5 退回要照修正後的驗證');
+  assert.match(section(6), /修正後的驗證/, '階段 6 退回要照修正後的驗證');
+  assert.match(section(6), /\*\*合併成一輪修正\*\*/, '階段 6 兩個 reviewer 的發現要合併');
+
+  for (const name of ['backend-engineer', 'frontend-engineer']) {
+    const { body: eng } = agents.find((a) => a.fields.name === name);
+    const fix = eng.split(/^## /m).find((s) => s.startsWith('修正輪')) ?? '';
+    assert.match(fix, /\*\*一次完整測試指令\*\*/, `${name} 修正輪沒有跑完整測試`);
+  }
+});
+
 test('唯讀角色回報只寫結論與發現，不重述程式碼', () => {
   for (const name of ['code-reviewer', 'security-reviewer', 'verifier']) {
     const { body } = agents.find((a) => a.fields.name === name);
