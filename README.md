@@ -43,7 +43,7 @@
 
 流程採兩層 TDD，概念參考 [obra/superpowers](https://github.com/obra/superpowers) 的 `test-driven-development` / `writing-plans` / `systematic-debugging`：
 
-- **外層**：`test-engineer` 在實作前依 AC 寫驗收測試並跑出紅燈；這批測試鎖定，工程師不能改。
+- **外層**：`test-engineer` 在實作前依 AC 寫驗收測試並跑出紅燈；這批測試鎖定，工程師不能改（由 hook 硬性阻擋，見下方 Harness）。
 - **內層**：工程師每段行為都走 RED → GREEN → REFACTOR，回報要附紅燈與綠燈的實際輸出。
 - **Bug 修復**：先寫出重現 bug 的紅燈測試（重現不了就停），工程師先找根因再修，同一個 bug 修 3 次不過就停下回報。
 - 純設定、migration、自動產生的程式、純樣式可以列為「TDD 例外」，由你決定是否接受。
@@ -93,7 +93,35 @@ subagent 看不到你和總指揮的對話，**角色之間只靠這些檔案交
 | Hook | 作用 |
 |------|------|
 | `PreToolUse`（Edit/Write） | 擋下寫入 `.env*`（範例檔除外）、`*.pem`/`*.key`、SSH key、`credentials*.json`、`secrets.*`、`.npmrc`、`.git/` 內部檔。真的要改就用 `DEV_TEAM_ALLOW_SENSITIVE=1` 啟動 Claude，或自己手動改 |
-| `SubagentStart` / `SubagentStop` | 每個角色的啟動、結束和回報摘要記到 `<專案>/.claude/dev-team/activity.jsonl` |
+| `PreToolUse`（Edit/Write） | **驗收測試鎖定**：`backend-engineer` / `frontend-engineer` 改 `gate.json` 列出的驗收測試，或改 `.claude/dev-team/` 底下的檔案，直接擋下。`test-engineer` 和主 session 不擋 |
+| `SubagentStop` | **綠燈關卡**：工程師要結束時，自動跑 `gate.json` 裡該角色的驗收測試指令；紅燈就擋回去繼續修，附測試輸出最後 40 行。同一個工程師最多擋 3 次（`maxStopBlocks`），回報 `BLOCKED` / `NEEDS_CONTEXT` 時不擋 |
+| `SubagentStart` / `SubagentStop` | 每個角色的啟動、結束和回報摘要記到 `<專案>/.claude/dev-team/activity.jsonl`；綠燈關卡的結果也記在這裡（`event: StopGate`） |
+
+### 關卡狀態檔 `gate.json`
+
+兩個關卡 hook 都讀 `<專案>/.claude/dev-team/gate.json`。總指揮在階段 3（紅燈測試確認後）建立，階段 8 清除；**沒有這個檔時兩個 hook 都不做事**，所以不跑 `/dev-team:feature` 的 session 不受影響。
+
+```json
+{
+  "workdir": "docs/specs/20261109-order-filter",
+  "lockedTests": ["backend/tests/acceptance/test_order_filter.py"],
+  "acceptanceCommands": {
+    "backend-engineer": "cd backend && pytest -q tests/acceptance/test_order_filter.py",
+    "frontend-engineer": "cd frontend && npx vitest run src/__tests__/order-filter.acceptance.test.tsx"
+  },
+  "maxStopBlocks": 3
+}
+```
+
+總指揮用 `hooks/scripts/gate.mjs` 管理（從專案根目錄執行）：
+
+| 指令 | 作用 |
+|------|------|
+| `node <plugin>/hooks/scripts/gate.mjs lock` | 計算 `lockedTests` 每個檔案的 sha256 並寫回 |
+| `node <plugin>/hooks/scripts/gate.mjs check` | 比對驗收測試有沒有被改或被刪，有變更時 exit 1 |
+| `node <plugin>/hooks/scripts/gate.mjs clear` | 刪掉 `gate.json` 與擋停計數 `stop-guard.json` |
+
+鎖定只攔得到 Edit / Write，工程師用 Bash 改檔攔不到，所以每輪修正後總指揮仍會跑 `gate.mjs check` 當最後防線。
 
 建議在各專案的 `.gitignore` 加上 `.claude/dev-team/`。
 
@@ -122,6 +150,7 @@ claude plugin validate "D:/workshop/claude-agent-harness/.claude-plugin/plugin.j
 
 ## 已知限制
 
-- `CLAUDE.md` 和 skill 裡寫的流程是**軟性**的：模型多半會照做，但不保證。需要「每次一定執行」的檢查要用 hook。
+- `CLAUDE.md` 和 skill 裡寫的流程是**軟性**的：模型多半會照做，但不保證。需要「每次一定執行」的檢查要用 hook。目前硬性執行的只有：敏感檔案防護、驗收測試鎖定、工程師綠燈關卡；其餘（關卡 A / B、輪數上限、review）仍靠總指揮遵守流程。
+- 綠燈關卡每次工程師結束都會多跑一次驗收測試；指令要只跑這次的驗收測試，不要放整個套件，否則每次都要等很久。hook timeout 是 600 秒。
 - Subagent 無法直接問你問題。需求分析師會把問題交回總指揮，再由總指揮問你。
 - 前後端平行開發時，如果會改到同一批檔案，總指揮會改成依序進行。真的要隔離的話，可以在 agent frontmatter 加 `isolation: worktree`（需要 git repo）。

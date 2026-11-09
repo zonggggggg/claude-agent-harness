@@ -48,6 +48,18 @@ disable-model-invocation: true
   - 使用者做了決定：TDD 例外、`MANUAL` 的 AC、不修的 Warning、契約變更
   - 你自己做了裁決：模糊處怎麼解讀、爭議退給誰、接受或退回哪份證據。寫進「總指揮裁決」段落（不是混在階段紀錄裡），之後派工引用它，不要讓決策只留在對話裡
 - **接續既有工作**：使用者要接續某個工作資料夾、或對話被壓縮後不確定進度時，**先讀 `progress.md`**，從「目前階段」繼續；已確認的關卡不要重問，已用完的重修輪數不要重新計算。
+- **關卡狀態檔 `gate.json`**：`<專案>/.claude/dev-team/gate.json`，讓 hook 硬性執行兩條規則（不是靠角色自覺）。腳本 `gate.mjs` 在本 plugin 的 `hooks/scripts/`（本 skill 目錄往上兩層），從專案根目錄執行：`node <plugin>/hooks/scripts/gate.mjs <lock|check|clear>`。
+  ```json
+  {
+    "workdir": "docs/specs/<YYYYMMDD>-<slug>",
+    "lockedTests": ["<驗收測試檔，相對專案根目錄>"],
+    "acceptanceCommands": { "backend-engineer": "<只跑 BE 驗收測試的指令>", "frontend-engineer": "<只跑 FE 驗收測試的指令>" },
+    "maxStopBlocks": 3
+  }
+  ```
+  - **鎖定**：工程師用 Edit / Write 改 `lockedTests` 裡的檔案（或 `.claude/dev-team/` 底下的檔案）會被 PreToolUse hook 直接擋下。用 Bash 改檔攔不到，所以修正後仍要跑 `gate.mjs check`。
+  - **綠燈關卡**：工程師要結束時，SubagentStop hook 自動跑 `acceptanceCommands` 裡該角色的指令，紅燈就擋下、把測試輸出丟回給它繼續修，同一個工程師最多擋 `maxStopBlocks` 次。回報狀態是 `BLOCKED` / `NEEDS_CONTEXT` 時不擋。
+  - 一個專案同時只有一份 `gate.json`，對應正在進行的那個工作資料夾。沒有這個檔時兩個 hook 都不做事。
 - **專案測試方式**：專案 `CLAUDE.md` 的 `## 測試方式` 段落（測試指令、執行環境、環境變數、需要的服務）是所有角色跑測試的依據，讓每個專案只摸索一次。呼叫 `architect`、`test-engineer`、工程師時提醒它們先讀這段。
 - **派工 prompt 只放這個角色需要的東西**：這次任務在流程中的位置（一行）、工作資料夾路徑與要讀的檔案 / 段落、檔案裡沒有但它需要的決策（引用 `progress.md` 的「總指揮裁決」）、回報檔路徑。**不貼對話歷史、前面角色的完整回報或檔案內容**——貼進 prompt 的東西和 subagent 的回報都會一直留在你的 context，之後每回合都要重讀。
 - **回報短、細節進檔案**：寫入型角色（`requirements-analyst`、`architect`、`test-engineer`、工程師）把完整內容寫進工作資料夾的檔案，回給你 15 行內，第一行是狀態。工程師的回報檔是 `<工作資料夾>/reports/<任務編號>-<角色>-r<輪次>.md`。唯讀角色（`code-reviewer`、`security-reviewer`、`verifier`）不能寫檔，回報只列結論與發現，由你寫入檔案。要查證據時，讀檔案裡的對應段落，不要整份讀。
@@ -56,13 +68,13 @@ disable-model-invocation: true
   | 你做 | 交給 subagent |
   |------|--------------|
   | 讀流程檔案（spec、design、test-report、progress、回報檔）的相關段落 | 廣泛讀產品程式碼、grep 整個 codebase |
-  | `git status`、`git diff --stat`、驗收測試檔的雜湊值 | 跑完整測試套件、讀完整 diff |
+  | `git status`、`git diff --stat`、`gate.mjs check` | 跑完整測試套件、讀完整 diff |
   | 寫 `progress.md`、把唯讀角色的回報寫成檔案 | 除錯、找根因、寫或改程式 |
   | 使用者問細節時，讀指定段落回答 | 重新驗證 subagent 已驗證過的東西 |
 
 - **修正後的驗證**（階段 5、6 退回工程師修正時都適用）：
   1. 工程師修完自己跑：守住這次問題的測試、受影響 AC 的驗收測試，再跑**一次完整測試指令**（很便宜，而且「有影響的地方」很難判斷準，是抓 regression 的安全網）。結果寫進回報檔，回報只寫一行。
-  2. 你比對驗收測試的雜湊值（階段 3 記下的），有變就是測試被改了，先處理這件事。
+  2. 你跑 `gate.mjs check`，exit 1（驗收測試被改過或被刪）就先處理這件事，不要往下走。
   3. **不再重新派 `test-engineer` 做 VERIFY**。例外：修正改變了行為（新增邏輯分支、改契約、改到某條 AC 的核心行為）→ 派一次**限定範圍的 VERIFY**，只針對受影響的 AC 補邊界、確認測試沒被改弱。
 - **卡住時升級模型**：`test-engineer` 與工程師平常跑在 frontmatter 的 `sonnet`。遇到以下情況，下一次派工**明確傳 `model: opus`**，並把升級原因寫進「總指揮裁決」：
   - 同一批 RED 測試被你退回第 2 次
@@ -80,6 +92,7 @@ disable-model-invocation: true
    - **小**（單一層、預計 ≤3 個檔案、需求明確）：可以略過架構師，請工程師直接依 spec 實作；**紅燈測試、測試驗證、review 仍然要做**。
    - **中 / 大**：走完整流程。
 4. 建立工作資料夾、`request.md` 與 `progress.md`。工作資料夾已存在且有 `progress.md` → 照「接續既有工作」處理，不要重建。
+5. 專案已有 `.claude/dev-team/gate.json`，而且 `workdir` 不是這次的工作資料夾 → 代表上一個功能沒收尾。問使用者：先回去收尾，還是放棄它（跑 `gate.mjs clear`）再開始。
 
 ### 階段 1：需求 → 🚦 關卡 A
 1. 呼叫 `requirements-analyst`。
@@ -101,7 +114,9 @@ disable-model-invocation: true
    - **有預期值說不出來源**（對照表的「預期值來源」空白，或寫不出 spec / fixture / 計算依據）：驗收測試會鎖定，錯的預期值等於把錯的行為鎖進程式
 3. 標為 `MANUAL` 的 AC（無法自動化，例如純視覺、需要真實外部服務）：把原因列給使用者，之後由驗收階段人工確認。
 4. 這批驗收測試從此鎖定：工程師不能改。要改只能由 `test-engineer` 改，而且要有明確理由（例如契約經使用者同意後變更）。
-   用 `git hash-object <驗收測試檔…>` 記下每個檔案的雜湊值，寫進 `progress.md` 的「階段紀錄」，之後每輪修正都拿來比對。
+   建立 `.claude/dev-team/gate.json`（格式見「共同約定」）：`lockedTests` 填 RED 對照表裡的驗收測試檔，`acceptanceCommands` 照抄 test-report.md RED 區塊「依角色分開的驗收測試指令」。
+   接著跑 `gate.mjs lock` 記下每個檔案的 sha256，把輸出摘要寫進 `progress.md` 的「階段紀錄」，之後每輪修正都跑 `gate.mjs check` 比對。
+   之後 `test-engineer` 經同意改了驗收測試 → 更新 `lockedTests` 後重跑 `gate.mjs lock`，並把原因寫進「總指揮裁決」。
 5. 回報附了「建議加入 CLAUDE.md 的測試方式」草稿 → 給使用者看，問要不要加入專案 `CLAUDE.md`。**使用者同意才寫入**，只新增或更新 `## 測試方式` 這一段，不動其他內容。
 
 ### 階段 4：實作（讓測試變綠）
@@ -112,6 +127,7 @@ disable-model-invocation: true
 3. 檢查工程師回報檔的證據段落：每段新增邏輯都要有 **RED 證據**（測試名稱 + 失敗訊息）和 **GREEN 證據**。缺 RED 證據又沒有列為「TDD 例外」→ 退回補做。「TDD 例外」清單列給使用者看。
 4. 工程師認為驗收測試寫錯 → 停下來判斷：測試違反 spec / 契約 → 交回 `test-engineer` 修；測試正確 → 工程師改程式。判斷不了就問使用者。
 5. 工程師回報偏離設計或契約有問題 → 停下來，先找架構師或使用者決定，不要讓工程師自行改契約。
+6. 工程師回報 `DONE`，但 `.claude/dev-team/activity.jsonl` 裡它最後一筆 `StopGate` 是 `fail-released`（擋滿次數後被放行）→ 視為 `BLOCKED`，驗收測試其實還是紅的，照卡住的規則處理。
 
 ### 階段 5：測試驗證
 1. 呼叫 `test-engineer`，模式 `VERIFY`：重跑驗收測試、確認沒有被改弱、補邊界條件與錯誤路徑、跑完整測試套件確認沒有 regression。
@@ -138,7 +154,7 @@ disable-model-invocation: true
 - TDD 例外、未解決的 Warning、需要人工確認的項目
 - 下一步建議：`git add` 後可用 `staged-change-reviewer` 做 commit 前最後把關。
 
-把 `progress.md` 的「目前階段」改成「完成」，並追加最後一行階段紀錄。
+把 `progress.md` 的「目前階段」改成「完成」，並追加最後一行階段紀錄。然後跑 `gate.mjs clear` 清掉關卡狀態，不然下一個功能會被這次的鎖擋到。
 
 還有下一個功能或 task 時，**建議使用者開新 session**，從那個工作資料夾的 `progress.md` 接手，不要在同一個 session 接著做：這個 session 的 context 已經累積了整個 task，延續下去每回合都要重讀，也更容易漏掉流程規則。
 

@@ -47,6 +47,7 @@ RED 模式寫入（或更新）「RED」區塊，VERIFY 模式寫入「VERIFY」
 
 **RED 區塊**
 - 執行指令與前置條件（工程師會照這個跑）：**實際跑通的版本**，含執行環境、環境變數、需要的服務
+- **依角色分開的驗收測試指令**：`backend-engineer` 一行、`frontend-engineer` 一行（沒有該層的任務就寫「無」）。每行都要能從專案根目錄直接執行（例如 `cd backend && pytest -q tests/acceptance/test_x.py`），只跑該角色要讓它變綠的驗收測試，失敗時 exit code 非 0。總指揮會把它放進 hook，在工程師結束前自動執行
 - 專案 `CLAUDE.md` 沒有「測試方式」段落，或內容和實際跑通的不同 → 附上「建議加入 CLAUDE.md 的測試方式」草稿（`## 測試方式` 開頭的 Markdown）。你不改 `CLAUDE.md`，由總指揮問使用者
 - 對照表：`AC 編號 | 測試檔案::測試名稱 | 紅燈原因 | 失敗訊息摘錄 | 預期值來源`
 - `MANUAL` 的 AC 與原因

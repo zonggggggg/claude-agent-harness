@@ -232,7 +232,8 @@ test('修正後只補驗受影響處：工程師跑相關測試 + 一次完整�
   assert.match(body, /\*\*不再重新派 `test-engineer` 做 VERIFY\*\*/);
   assert.match(body, /\*\*限定範圍的 VERIFY\*\*/);
   const section = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
-  assert.match(section(3), /git hash-object/, '階段 3 要記下驗收測試的雜湊值');
+  assert.match(section(3), /gate\.mjs lock/, '階段 3 要鎖定驗收測試並記下雜湊值');
+  assert.match(body, /跑 `gate\.mjs check`/, '修正後要用 gate.mjs check 比對驗收測試');
   assert.match(section(5), /修正後的驗證/, '階段 5 退回要照修正後的驗證');
   assert.match(section(6), /修正後的驗證/, '階段 6 退回要照修正後的驗證');
   assert.match(section(6), /\*\*合併成一輪修正\*\*/, '階段 6 兩個 reviewer 的發現要合併');
@@ -274,6 +275,29 @@ test('hooks.json 指到的腳本都存在', () => {
     const m = cmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)/);
     assert.ok(m, `無法解析 ${cmd}`);
     assert.ok(existsSync(join(ROOT, m[1])), `找不到 ${m[1]}`);
+  }
+});
+
+test('硬性關卡：hooks.json 接上鎖定與綠燈關卡，流程會建立與清除 gate.json', () => {
+  const hooks = JSON.parse(readFileSync(join(ROOT, 'hooks', 'hooks.json'), 'utf8')).hooks;
+  const cmds = (event) => (hooks[event] ?? []).flatMap((g) => g.hooks).map((h) => h.command).join('\n');
+  assert.match(cmds('PreToolUse'), /guard-locked-tests\.mjs/);
+  assert.match(cmds('SubagentStop'), /require-green-on-stop\.mjs/);
+  const stopHook = hooks.SubagentStop.flatMap((g) => g.hooks).find((h) => h.command.includes('require-green-on-stop'));
+  assert.ok(stopHook.timeout >= 600, '綠燈關卡要跑測試，timeout 不能太短');
+
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  assert.match(body, /\*\*關卡狀態檔 `gate\.json`\*\*/);
+  const section = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
+  assert.match(section(0), /gate\.json/, '階段 0 要檢查有沒有沒收尾的 gate.json');
+  assert.match(section(3), /acceptanceCommands/, '階段 3 要寫入各角色的驗收測試指令');
+  assert.match(section(4), /fail-released/, '階段 4 要處理被擋滿後放行的工程師');
+  assert.match(section(8), /gate\.mjs clear/, '階段 8 要清除關卡狀態');
+
+  const role = (name) => agents.find((a) => a.fields.name === name).body;
+  assert.match(role('test-engineer'), /\*\*依角色分開的驗收測試指令\*\*/);
+  for (const name of ['backend-engineer', 'frontend-engineer']) {
+    assert.match(role(name), /\*\*不要改用 Bash 或其他方式繞過\*\*/, `${name} 缺少不可繞過鎖定的紅線`);
   }
 });
 
