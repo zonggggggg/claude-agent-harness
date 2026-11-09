@@ -26,6 +26,7 @@ color: blue
    - 針對測試寫死：產品程式碼出現和測試 fixture 相同的常數、依測試名稱或測試專用輸入分支、條件只涵蓋測試用到的輸入。這類問題一律列為 Critical
    - 測試設定：新增或修改 `conftest.py`、pytest / vitest / jest 設定、`setupTests`，或新增 skip / xfail / todo / `.only` 標記。spec / design 沒要求卻動了這些，列為 Critical
    - 資料庫（改動碰到 migration、ORM model、raw SQL 時才看）：migration 能不能 rollback、大表加欄位或建索引會不會長時間鎖表、迴圈裡查詢造成 N+1、交易範圍是否涵蓋該一起成功或失敗的寫入、新查詢的條件有沒有對應索引
+   - 前端（改動碰到畫面時才看）：有沒有重造既有元件（對照專案前端規範與 `ui-design.md`）、載入中 / 空資料 / 錯誤 / 沒有權限 狀態有沒有做齊、畫面文字是否和 spec 一致、基本無障礙（欄位有 label、能用鍵盤操作、可見焦點）。寫死的顏色或尺寸交給專案的 lint，除非違反前端規範才列
    - 衛生：殘留 debug 輸出、註解掉的程式、不相關的改動、誤加的檔案
    - 資安只做基本檢查（明顯的注入、硬編碼密鑰）；深入的資安審查交給 security-reviewer
 

@@ -1,14 +1,16 @@
 # dev-team：Claude Code 多角色開發團隊 + Harness
 
-一個本機 Claude Code **plugin**，裡面有 9 個角色（subagent）、2 個流程指令（skill），以及保護和紀錄用的 hooks。
+一個本機 Claude Code **plugin**，裡面有 10 個角色（subagent）、2 個流程指令（skill），以及保護和紀錄用的 hooks。
 
 ```
 你 ──> /dev-team:feature <需求>
          │  主 session = 總指揮（orchestrator），不寫產品程式碼
          ▼
-  requirements-analyst ──> spec.md（AC 驗收條件）   🚦 關卡 A：你確認規格
+  requirements-analyst ──> spec.md（AC、畫面規模、UI 文字）   🚦 關卡 A：你確認規格與畫面規模
          ▼
-  architect ──> design.md（API 契約、任務拆分）      🚦 關卡 B：你確認設計
+  [畫面規模是「設計」時] ui-designer ──> ui-design.md + mockup.html（+ 截圖）
+         ▼
+  architect ──> design.md（API 契約、畫面配置、任務拆分）    🚦 關卡 B：你確認設計（含設計稿）
          ▼
   test-engineer [RED] ──> 紅燈驗收測試（實作前先寫、先跑出紅燈）
          ▼
@@ -35,6 +37,7 @@
 | `code-reviewer` | **唯讀** | 對照 spec 審查改動 |
 | `security-reviewer` | **唯讀** | 資安審查 |
 | `verifier` | **唯讀** | 沒參與開發，獨立驗收 |
+| `ui-designer` | 讀 + 寫工作資料夾 | 只在畫面規模是「設計」時派：產出 ui-design.md 與 mockup.html，能截圖就附截圖；新系統 / 改版才載入 frontend-design |
 | `staged-change-reviewer` | **唯讀** | commit 前審 staged diff（取自 `claude-code-kit`，這裡改成唯讀） |
 
 工程師和測試角色不能再開 subagent（`disallowedTools: Agent`），任務一律由總指揮分派，避免角色自己越級分工。
@@ -47,6 +50,33 @@
 - **內層**：工程師每段行為都走 RED → GREEN → REFACTOR，回報要附紅燈與綠燈的實際輸出。
 - **Bug 修復**：先寫出重現 bug 的紅燈測試（重現不了就停），工程師先找根因再修，同一個 bug 修 3 次不過就停下回報。
 - 純設定、migration、自動產生的程式、純樣式可以列為「TDD 例外」，由你決定是否接受。
+
+## 畫面設計怎麼分工
+
+| 要決定的事 | 誰 | 寫在哪 | 你在哪確認 |
+|-----------|----|--------|-----------|
+| 畫面規模：`無` / `配置`（既有畫面加按鈕、彈窗）/ `設計`（新頁面、新系統、改版） | `requirements-analyst` 判斷 | spec.md | 關卡 A |
+| 按鈕名稱、彈窗標題 / 內文 / 按鈕、錯誤訊息 | `requirements-analyst` | spec.md 的 AC | 關卡 A |
+| 放在哪裡、用哪個既有元件、照哪個參照頁面 | `architect`（`配置`）或 `ui-designer`（`設計`） | design.md「畫面配置」/ ui-design.md | 關卡 B |
+| 實作 | `frontend-engineer`：照設計做，設計沒寫到的地方照參照頁面並回報 | — | 收尾 |
+
+測試用來找按鈕的文字一律照抄 spec，不讓 test-engineer 自己取名（寫進鎖定的驗收測試後就改不動）。
+
+### 專案前端規範（每個專案一份）
+
+放在專案的 `.claude/rules/frontend.md`（`CLAUDE.md` 指定其他位置也可以）。dev-team 的角色會被明確告知去讀它，所以不依賴自動載入。建議只寫指向實際程式碼的短內容：
+
+- 元件選用：彈窗、表格、按鈕、表單各用哪個（同類元件很多時一定要寫）
+- 樣式寫法：用哪套 UI 庫、主題 / token 檔在哪、哪種樣式寫法
+- 參照頁面：兩三個「照這個做」的頁面
+- 啟動與登入：dev server 指令、要不要後端、登入方式。**寫了這段，frontend-engineer 才會截實際畫面**；需要 Azure AD 等互動式登入的專案，先維持人工確認
+
+專案還沒有這份規範時，`ui-designer` 或 `frontend-engineer` 會附草稿，總指揮問過你才寫入。檔案可以加 `paths` frontmatter 讓其他 session 只在碰到前端檔案時載入；社群回報過官方文件的 `paths` 寫法有誤，加完要確認有生效。
+
+### 選用：frontend-design 與截圖
+
+- [frontend-design](https://claude.com/marketplace/plugins/frontend-design) 是另外安裝的官方 plugin。有裝時，`ui-designer` 只在 `NEW` 模式（全新系統，或你在關卡 A 確認要改版）載入；在既有系統加畫面時不用，就算那個專案還沒寫前端規範也一樣，以免偏離現有風格。沒裝也能設計，`ui-designer` 內建設計原則。
+- mockup 截圖需要 Playwright。dev-team 不會自動安裝；想要截圖就自己裝一次（例如全域安裝 `playwright` 再 `npx playwright install chromium`）。沒有 Playwright 時，用瀏覽器打開 `mockup.html` 即可。
 
 ## 安裝
 
@@ -84,7 +114,7 @@ claude plugin marketplace update workshop-local
 | 只要 review 目前改動 | `/dev-team:team-review` |
 | 單獨叫一個角色 | 「用 dev-team:architect 幫我評估把 session 改成 JWT 的影響」 |
 
-所有產出放在專案的 `docs/specs/<日期>-<slug>/`：`request.md`、`spec.md`、`design.md`、`test-report.md`、`verify.md`，以及總指揮的進度檔 `progress.md`（目前階段、關卡確認、重修輪數、你做過的決定）。
+所有產出放在專案的 `docs/specs/<日期>-<slug>/`：`request.md`、`spec.md`、`design.md`、`test-report.md`、`verify.md`，有畫面設計時還有 `ui-design.md`、`mockup.html`、`mockup/`、`screenshots/`，以及總指揮的進度檔 `progress.md`（目前階段、關卡確認、重修輪數、你做過的決定）。
 對話被壓縮或換 session 時，說「接續 `docs/specs/<日期>-<slug>`」，總指揮會先讀 `progress.md` 從中斷的地方繼續。
 subagent 看不到你和總指揮的對話，**角色之間只靠這些檔案交接**，所以它們也是之後回頭查的紀錄。
 
@@ -159,7 +189,7 @@ plugin 不負責擋危險指令。請在專案的 `.claude/settings.json`（或�
 
 ## 客製化
 
-- **模型**：每個角色都明確指定模型，不用 `inherit`（否則全部跟著主 session 跑，通常是最貴的那個）。負責「想」和「把關」的角色用 `opus`：總指揮（主 session，由你選）、`requirements-analyst`、`architect`、`code-reviewer`、`security-reviewer`、`verifier`。照規格「做」的角色用 `sonnet`：`backend-engineer`、`frontend-engineer`、`test-engineer`、`staged-change-reviewer`。
+- **模型**：每個角色都明確指定模型，不用 `inherit`（否則全部跟著主 session 跑，通常是最貴的那個）。負責「想」和「把關」的角色用 `opus`：總指揮（主 session，由你選）、`requirements-analyst`、`architect`、`ui-designer`、`code-reviewer`、`security-reviewer`、`verifier`。照規格「做」的角色用 `sonnet`：`backend-engineer`、`frontend-engineer`、`test-engineer`、`staged-change-reviewer`。
   `test-engineer` 用 sonnet 的前提是預期值不由它決定：`architect` 在 design 的「關鍵斷言」寫出每條 AC 的具體預期值與來源，總指揮在 RED 後對照檢查，`verifier` 最後確認測試真的驗到 AC。工程師與 `test-engineer` 卡住時（RED 被退回第 2 次、`BLOCKED`、同一問題修一輪未解），總指揮下一次派工改傳 `model: opus`。可以改成別名（`opus`、`sonnet`、`haiku`）或完整 model ID，`tests/plugin-structure.test.mjs` 會檢查每個角色的設定。
   注意：Claude Code 版本太舊時，subagent 會直接失敗。2.1.133 實測派 Opus 5.5 的 subagent 時，API 回 `version 2.1.280 or newer is required`。請先 `claude update`，或改用 desktop app。
 - **專案測試方式**：在專案 `CLAUDE.md` 寫一段 `## 測試方式`，內容包括測試指令、執行環境、環境變數、需要的服務、已知會失敗的測試。architect 和 test-engineer 會先讀這段，不再每個功能重新摸索環境。沒有這段時，test-engineer 會在第一次 RED 跑通後提出草稿，總指揮問過你才寫入。

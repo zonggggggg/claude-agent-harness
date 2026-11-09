@@ -24,6 +24,7 @@ disable-model-invocation: true
 | Code reviewer | `code-reviewer` | review 意見（唯讀） |
 | 資安審查 | `security-reviewer` | 資安意見（唯讀） |
 | 驗收者 | `verifier` | 驗收結果 → `verify.md` |
+| UI 設計師（只在畫面規模是「設計」時） | `ui-designer` | `ui-design.md`、`mockup.html`、截圖 |
 
 以 plugin 安裝時，subagent 名稱會帶 plugin 前綴（例如 `dev-team:architect`），以實際可用的名稱為準。
 
@@ -64,6 +65,8 @@ disable-model-invocation: true
     exit 0 不一定是真的綠燈（例如新增 `conftest.py` 把測試全部 skip，pytest 一樣 exit 0），所以 hook 還會解析測試摘要：有 skipped / deselected / xfailed / xpassed / todo，或通過數少於 `acceptanceCounts`，一樣擋下。解析不到摘要時放行，但記成 `pass-unparsed`，代表數量檢查沒生效。
   - 一個專案同時只有一份 `gate.json`，對應正在進行的那個工作資料夾。沒有這個檔時兩個 hook 都不做事。
 - **專案測試方式**：專案 `CLAUDE.md` 的 `## 測試方式` 段落（測試指令、執行環境、環境變數、需要的服務）是所有角色跑測試的依據，讓每個專案只摸索一次。呼叫 `architect`、`test-engineer`、工程師時提醒它們先讀這段。
+- **專案前端規範**：預設是專案的 `.claude/rules/frontend.md`（專案 `CLAUDE.md` 指定其他位置就照它），內容是元件選用（彈窗、表格、按鈕各用哪個）、樣式寫法、參照頁面、啟動與登入方式（有寫才能截圖）。有畫面變動時，呼叫 `ui-designer`、`architect`、`frontend-engineer`、`code-reviewer`、`verifier` 都要給它們這個路徑。專案還沒有這份規範時，`ui-designer` 或 `frontend-engineer` 會附草稿；給使用者看，**使用者同意才寫入**，只新增或更新這一個檔案。
+- **畫面規模**：`requirements-analyst` 在 spec 標 `無` / `配置` / `設計`，使用者在關卡 A 確認。`配置` 由 `architect` 在 design.md 寫「畫面配置」與文字示意圖；`設計` 先派 `ui-designer` 做設計稿。畫面上的文字（按鈕名稱、彈窗內容、錯誤訊息）寫在 spec 的 AC，各角色照抄，不自己取名。
 - **派工 prompt 只放這個角色需要的東西**：這次任務在流程中的位置（一行）、工作資料夾路徑與要讀的檔案 / 段落、檔案裡沒有但它需要的決策（引用 `progress.md` 的「總指揮裁決」）、回報檔路徑。**不貼對話歷史、前面角色的完整回報或檔案內容**——貼進 prompt 的東西和 subagent 的回報都會一直留在你的 context，之後每回合都要重讀。
 - **回報短、細節進檔案**：寫入型角色（`requirements-analyst`、`architect`、`test-engineer`、工程師）把完整內容寫進工作資料夾的檔案，回給你 15 行內，第一行是狀態。工程師的回報檔是 `<工作資料夾>/reports/<任務編號>-<角色>-r<輪次>.md`。唯讀角色（`code-reviewer`、`security-reviewer`、`verifier`）不能寫檔，回報只列結論與發現，由你寫入檔案。要查證據時，讀檔案裡的對應段落，不要整份讀。
 - **總指揮的工作界線**：
@@ -100,12 +103,15 @@ disable-model-invocation: true
 ### 階段 1：需求 → 🚦 關卡 A
 1. 呼叫 `requirements-analyst`。
 2. 若回報 `NEEDS_CLARIFICATION`：用 AskUserQuestion 把待釐清問題問使用者（附上分析師建議的預設答案），再把答案交回分析師更新 spec。最多來回 3 輪。
-3. **關卡 A**：把 AC 清單給使用者看，等使用者確認規格。**沒確認不進下一階段。**
+3. **關卡 A**：把 AC 清單和畫面規模給使用者看，等使用者確認規格。畫面規模是 `設計` 時，一併問使用者這次是在既有風格裡加畫面（`EXISTING`），還是全新系統 / 改版（`NEW`）。已經有畫面的系統預設 `EXISTING`，就算還沒寫前端規範也一樣；`NEW` 一定要使用者明確選。確認結果寫進 `progress.md`。**沒確認不進下一階段。**
+4. 階段 0 判斷為小任務、但確認的畫面規模不是 `無` → 不能略過階段 2，按鈕放哪裡、用哪個元件要在關卡 B 讓使用者看過。
 
 ### 階段 2：設計 → 🚦 關卡 B
-1. 呼叫 `architect`。任務清單的第一個任務應該是 `[TEST]` 紅燈驗收測試，`[BE]` / `[FE]` 依賴它。
-2. **關卡 B**：給使用者看方案摘要、任務清單、需要拍板的決策。等確認。
-   （小任務可略過此階段。）
+1. 畫面規模是 `設計` → 先呼叫 `ui-designer`，給它工作資料夾路徑、設計模式（`EXISTING` / `NEW`）與專案前端規範路徑。
+   回報 `NEEDS_CLARIFICATION`：用 AskUserQuestion 把待決定的事問使用者（附設計師的建議答案），再交回它更新設計。最多來回 2 輪。
+2. 呼叫 `architect`；有 `ui-design.md` 時一併給它路徑，請它照設計拆前端任務。任務清單的第一個任務應該是 `[TEST]` 紅燈驗收測試，`[BE]` / `[FE]` 依賴它。
+3. **關卡 B**：給使用者看方案摘要、任務清單、需要拍板的決策。畫面規模不是 `無` 時，附上 design.md「畫面配置」的文字示意圖；是 `設計` 時，再附上 mockup 截圖路徑（沒有截圖就請使用者用瀏覽器打開 `mockup.html`）。有前端規範草稿時，一起問要不要寫入。等確認。
+   （小任務、而且畫面規模是 `無` 時可略過此階段。）
 
 ### 階段 3：紅燈測試（Test First）
 1. 呼叫 `test-engineer`，模式 `RED`，範圍為全部 AC。
@@ -133,6 +139,7 @@ disable-model-invocation: true
 6. 工程師回報 `DONE`，但 `.claude/dev-team/activity.jsonl` 裡它最後一筆 `StopGate` 是 `fail-released`（擋滿次數後被放行）→ 視為 `BLOCKED`，驗收測試其實還是紅的，照卡住的規則處理。
    最後一筆 `StopGate` 是 `pass-unparsed`（測試輸出裡找不到摘要行，數量與 skip 檢查沒生效）→ 讀回報檔 GREEN 證據裡的通過數與 skip 數，派 `verifier` 時請它確認驗收測試真的有執行；之後調整驗收測試指令讓它印出摘要（例如 pytest 不要加 `-qq`）。
 7. `activity.jsonl` 有這個工程師的 `LockCheck` 紀錄（它用指令改了鎖定測試或 `gate.json`，hook 已自動還原）→ 寫進「總指揮裁決」，之後派 `verifier` 和 `code-reviewer` 時提醒它們特別檢查這個工程師的改動有沒有針對測試寫死答案。
+8. `frontend-engineer` 回報列出自己補的畫面決定（設計沒寫到的位置、元件、文字）→ 列給使用者看；附了「建議的前端規範」草稿 → 問使用者，**使用者同意才寫入** `.claude/rules/frontend.md`。
 
 ### 階段 5：測試驗證
 1. 呼叫 `test-engineer`，模式 `VERIFY`：重跑驗收測試、確認沒有被改弱、補邊界條件與錯誤路徑、跑完整測試套件確認沒有 regression。
@@ -140,14 +147,14 @@ disable-model-invocation: true
 3. **最多 3 輪**。第 3 輪還沒綠燈就停下來，向使用者報告卡在哪裡。
 
 ### 階段 6：Review
-1. 呼叫 `code-reviewer`。改動碰到 auth、權限、金流、資料存取、檔案上傳、外部輸入時，**同一則訊息**同時呼叫 `security-reviewer`。
+1. 呼叫 `code-reviewer`（有畫面變動時附上前端規範與 `ui-design.md` 路徑）。改動碰到 auth、權限、金流、資料存取、檔案上傳、外部輸入時，**同一則訊息**同時呼叫 `security-reviewer`。
 2. 有 Critical / High → 交回負責的工程師修（一樣先寫紅燈測試守住問題）→ 照「修正後的驗證」確認 → 再 review。最多 2 輪。
    `code-reviewer` 和 `security-reviewer` 的發現（含使用者決定要修的 Warning）**合併成一輪修正**，一次交給工程師，不要分開來回。
    再 review 時只給 reviewer 要確認的發現編號和這輪修正改到的檔案（從工程師回報檔取得），請它只確認這些是否解決、有沒有弄壞旁邊的東西，不重審整個改動。
 3. Warning 等級：列給使用者決定要不要修。
 
 ### 階段 7：驗收
-1. 呼叫 `verifier`，給它工作資料夾路徑與 `request.md`。
+1. 呼叫 `verifier`，給它工作資料夾路徑與 `request.md`；有畫面變動時附上前端規範路徑，並告訴它 `ui-design.md`、`screenshots/` 在哪裡。
 2. 把驗收結果寫入 `<工作資料夾>/verify.md`。
 3. 有 FAIL → 回到階段 4 修正。UNVERIFIED / `MANUAL` → 列給使用者人工確認。
 
@@ -155,6 +162,7 @@ disable-model-invocation: true
 向使用者報告：
 - 每條 AC 的最終狀態（PASS / FAIL / UNVERIFIED / MANUAL）
 - 改動檔案清單
+- 有畫面變動時：截圖與 mockup 路徑，以及需要使用者親自打開確認的頁面
 - 實際跑過的測試與結果（含紅燈 → 綠燈的對照）
 - TDD 例外、未解決的 Warning、需要人工確認的項目
 - 下一步建議：`git add` 後可用 `staged-change-reviewer` 做 commit 前最後把關。

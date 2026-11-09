@@ -32,7 +32,7 @@ const agentNames = new Set(agents.map((a) => a.fields.name));
 
 test('至少有核心角色', () => {
   for (const role of ['requirements-analyst', 'architect', 'backend-engineer', 'frontend-engineer',
-    'test-engineer', 'code-reviewer', 'security-reviewer', 'verifier']) {
+    'test-engineer', 'code-reviewer', 'security-reviewer', 'verifier', 'ui-designer']) {
     assert.ok(agentNames.has(role), `缺少 ${role}`);
   }
 });
@@ -70,6 +70,7 @@ test('每個角色都明確指定模型，不用 inherit', () => {
     verifier: 'opus',
     'test-engineer': 'sonnet',
     'staged-change-reviewer': 'sonnet',
+    'ui-designer': 'opus',
   };
   for (const a of agents) {
     assert.ok(a.fields.model && a.fields.model !== 'inherit', `${a.file} 沒有明確指定 model`);
@@ -91,7 +92,7 @@ test('skills 有合法 frontmatter，且提到的角色都存在', () => {
     assert.equal(fields.name, dir);
     assert.ok(fields.description);
     for (const [, name] of body.matchAll(/`([a-z]+(?:-[a-z]+)+)`/g)) {
-      if (/(engineer|reviewer|analyst)$/.test(name)) assert.ok(agentNames.has(name), `${dir} 引用了不存在的 ${name}`);
+      if (/(engineer|reviewer|analyst|designer)$/.test(name)) assert.ok(agentNames.has(name), `${dir} 引用了不存在的 ${name}`);
     }
   }
   assert.ok(existsSync(join(ROOT, 'skills', 'feature', 'templates', 'spec.md')));
@@ -334,6 +335,40 @@ test('防 skip 繞過綠燈：gate.json 有 acceptanceCounts、test-engineer 記
   assert.match(body, /"acceptanceCounts"/, 'gate.json 格式要有 acceptanceCounts');
   assert.match(section(3), /`acceptanceCounts` 照抄/, '階段 3 要寫入驗收測試數量');
   assert.match(section(4), /`pass-unparsed`/, '階段 4 要處理數量檢查沒生效的情況');
+});
+
+test('畫面設計：analyst 標畫面規模與 UI 文字、需要設計才派 ui-designer、architect 寫畫面配置、文字照抄 spec', () => {
+  const role = (name) => agents.find((a) => a.fields.name === name).body;
+  const designer = agents.find((a) => a.fields.name === 'ui-designer');
+  const tools = designer.fields.tools.split(',').map((s) => s.trim());
+  assert.ok(tools.includes('Skill'), 'ui-designer 要能載入 frontend-design');
+  assert.ok(!tools.includes('Agent'), 'ui-designer 不能再派 subagent');
+  assert.match(designer.body, /`EXISTING`/);
+  assert.match(designer.body, /\*\*只在 `NEW` 模式\*\*/, 'frontend-design 只在 NEW 模式載入');
+  assert.match(designer.body, /\*\*不要為了截圖安裝任何套件\*\*/);
+  assert.match(designer.body, /### `mockup\.html`/);
+
+  assert.match(role('requirements-analyst'), /\*\*畫面規模\*\*/);
+  assert.match(role('requirements-analyst'), /\*\*使用者看得到的文字寫進 AC\*\*/);
+  assert.match(role('architect'), /\*\*畫面配置\*\*/);
+  assert.match(role('test-engineer'), /\*\*畫面上的文字照抄 spec\*\*/);
+  assert.match(role('frontend-engineer'), /\*\*優先順序\*\*/);
+  assert.match(role('frontend-engineer'), /不要載入通用的設計 skill/);
+  assert.match(role('code-reviewer'), /前端（改動碰到畫面時才看）/);
+  assert.match(role('verifier'), /\*\*有畫面變動時對照設計\*\*/);
+
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  const section = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
+  assert.match(body, /\*\*專案前端規範\*\*/);
+  assert.match(section(1), /畫面規模/, '關卡 A 要確認畫面規模');
+  assert.match(section(2), /先呼叫 `ui-designer`/, '畫面規模是設計時先派 ui-designer');
+  assert.match(section(2), /mockup/, '關卡 B 要給使用者看設計稿');
+  assert.match(section(4), /\*\*使用者同意才寫入\*\* `\.claude\/rules\/frontend\.md`/);
+
+  const spec = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'spec.md'), 'utf8');
+  assert.match(spec, /^## 畫面規模$/m);
+  const design = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md'), 'utf8');
+  assert.match(design, /^## 畫面配置$/m);
 });
 
 test('plugin.json 與 marketplace.json 名稱一致', () => {

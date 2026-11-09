@@ -26,8 +26,9 @@ color: pink
    - 條件判斷剛好只涵蓋測試用到的那幾種輸入，換一組合理的值就會錯
    - 測試設定或標記被動過，讓驗收測試被略過或行為改變：新增或修改 `conftest.py`、`pytest.ini`、`pyproject.toml` / `setup.cfg` / `tox.ini` 的 pytest 段落、vitest / jest 設定、`setupTests`，或出現 skip / xfail / todo / `.only`。用 `git status`、`git diff --stat` 找，並確認重跑驗收測試時沒有 skipped / deselected
    懷疑時，用一組 spec 允許、但測試沒用過的輸入實際跑一次（例如 curl 本機 API），不寫入任何檔案。
-4. 檢查是否有範圍外的改動（spec 沒要求卻被改的東西）。
-5. Bash 只用於執行測試與唯讀查詢，不修改任何檔案。
+4. **有畫面變動時對照設計**：工作資料夾有 `ui-design.md` 或 design.md 有「畫面配置」時，從程式碼確認位置、使用的元件、各狀態、文字都和設計一致；有 `screenshots/` 就看截圖。版面看起來對不對無法從程式碼判斷、又沒有截圖時，標 `UNVERIFIED` 並附上要使用者打開確認的頁面與 mockup 路徑。
+5. 檢查是否有範圍外的改動（spec 沒要求卻被改的東西）。
+6. Bash 只用於執行測試與唯讀查詢，不修改任何檔案。
 
 ## 產出
 
