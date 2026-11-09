@@ -94,7 +94,8 @@ subagent 看不到你和總指揮的對話，**角色之間只靠這些檔案交
 |------|------|
 | `PreToolUse`（Edit/Write） | 擋下寫入 `.env*`（範例檔除外）、`*.pem`/`*.key`、SSH key、`credentials*.json`、`secrets.*`、`.npmrc`、`.git/` 內部檔。真的要改就用 `DEV_TEAM_ALLOW_SENSITIVE=1` 啟動 Claude，或自己手動改 |
 | `PreToolUse`（Edit/Write） | **驗收測試鎖定**：`backend-engineer` / `frontend-engineer` 改 `gate.json` 列出的驗收測試，或改 `.claude/dev-team/` 底下的檔案，直接擋下。`test-engineer` 和主 session 不擋 |
-| `SubagentStop` | **綠燈關卡**：工程師要結束時，自動跑 `gate.json` 裡該角色的驗收測試指令；紅燈就擋回去繼續修，附測試輸出最後 40 行。同一個工程師最多擋 3 次（`maxStopBlocks`），回報 `BLOCKED` / `NEEDS_CONTEXT` 時不擋 |
+| `PostToolUse`（Bash/PowerShell） | **指令改檔還原**：工程師每跑完一次指令，就比對驗收測試和 `gate.json` 的雜湊；被改或被刪就從 `gate.mjs lock` 的備份還原、回饋給工程師，並在 `activity.jsonl` 記一筆 `LockCheck`。不比對指令字串，所以 `sed -i`、重導向、`python -c` 改的都抓得到 |
+| `SubagentStop` | **綠燈關卡**：工程師要結束時，自動跑 `gate.json` 裡該角色的驗收測試指令；紅燈就擋回去繼續修，附測試輸出最後 40 行。exit 0 也會解析測試摘要（pytest / vitest / jest），有 skipped / deselected / xfailed / todo 或通過數少於 `acceptanceCounts` 一樣擋下。同一個工程師最多擋 3 次（`maxStopBlocks`），回報 `BLOCKED` / `NEEDS_CONTEXT` 時不擋 |
 | `SubagentStart` / `SubagentStop` | 每個角色的啟動、結束和回報摘要記到 `<專案>/.claude/dev-team/activity.jsonl`；綠燈關卡的結果也記在這裡（`event: StopGate`） |
 
 ### 關卡狀態檔 `gate.json`
@@ -109,6 +110,7 @@ subagent 看不到你和總指揮的對話，**角色之間只靠這些檔案交
     "backend-engineer": "cd backend && pytest -q tests/acceptance/test_order_filter.py",
     "frontend-engineer": "cd frontend && npx vitest run src/__tests__/order-filter.acceptance.test.tsx"
   },
+  "acceptanceCounts": { "backend-engineer": 4, "frontend-engineer": 2 },
   "maxStopBlocks": 3
 }
 ```
@@ -117,15 +119,43 @@ subagent 看不到你和總指揮的對話，**角色之間只靠這些檔案交
 
 | 指令 | 作用 |
 |------|------|
-| `node <plugin>/hooks/scripts/gate.mjs lock` | 計算 `lockedTests` 每個檔案的 sha256 並寫回 |
-| `node <plugin>/hooks/scripts/gate.mjs check` | 比對驗收測試有沒有被改或被刪，有變更時 exit 1 |
-| `node <plugin>/hooks/scripts/gate.mjs clear` | 刪掉 `gate.json` 與擋停計數 `stop-guard.json` |
+| `node <plugin>/hooks/scripts/gate.mjs lock` | 計算 `lockedTests` 每個檔案的 sha256 並寫回，同時把測試檔和 `gate.json` 備份到 `.claude/dev-team/locked/` |
+| `node <plugin>/hooks/scripts/gate.mjs check` | 比對驗收測試有沒有被改或被刪、`gate.json` 是否和 lock 時相同，有變更時 exit 1 |
+| `node <plugin>/hooks/scripts/gate.mjs clear` | 刪掉 `gate.json`、擋停計數 `stop-guard.json` 與備份 |
 
-鎖定只攔得到 Edit / Write，工程師用 Bash 改檔攔不到，所以每輪修正後總指揮仍會跑 `gate.mjs check` 當最後防線。
+Edit / Write 會在事前擋下；用指令改檔擋不了，改由 PostToolUse hook 事後還原。**改了 `gate.json` 一定要重跑 `gate.mjs lock`**，否則下一次工程師跑指令時會被還原成舊版。每輪修正後總指揮仍會跑 `gate.mjs check` 當最後防線。
 
 建議在各專案的 `.gitignore` 加上 `.claude/dev-team/`。
 
 > 安裝 plugin 後這些 hooks 對**所有 session** 都會生效，不只在 `/dev-team:feature` 裡。
+
+## 危險指令防護（各專案自己加）
+
+plugin 不負責擋危險指令。請在專案的 `.claude/settings.json`（或個人的 `~/.claude/settings.json`）加上 `permissions.deny`，這是 Claude Code 內建的權限規則，主 session 和所有 subagent 都適用：
+
+```json
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(rm -rf*)",
+      "Bash(rm -fr*)"
+    ]
+  }
+}
+```
+
+注意：
+
+- 規則比對的是指令開頭，換個寫法（例如 `git push origin main --force`、`bash -c "…"`）就攔不到。它是第一層，不是安全邊界；需要更完整的防護，可以看會解析指令語意的 PreToolUse 工具（例如 `cc-safety-net`）。
+- `git push --force*` 也會擋到 `--force-with-lease`。
+- 這些規則也會擋到你自己透過 Claude 執行的操作，真的需要時自己在終端機執行。
+- Windows 上 Claude 若改用 PowerShell 工具執行，`Bash(…)` 規則管不到。
+- 官方的 Bash sandbox 只支援 macOS、Linux 和 WSL2，原生 Windows 不能用，所以不能靠它。
+- 加完後建議在測試用的 repo 試一次，確認規則有生效。
 
 ## 客製化
 
@@ -148,9 +178,20 @@ claude plugin validate "D:/workshop/claude-agent-harness/.claude-plugin/plugin.j
 
 測試涵蓋：agent/skill 的 frontmatter 是否合法、名稱是否唯一、唯讀角色有沒有寫入權限、skill 引用的角色是否存在、hooks 腳本實際執行的行為。
 
+hook 情境測試（照 `hooks.json` 實際執行 hook，用真的指令嘗試繞過驗收測試鎖定；有 python + pytest 時會多跑 conftest.py / pytest.ini 繞過綠燈關卡的情境）：
+
+```bash
+npm run test:e2e --prefix "D:/workshop/claude-agent-harness"
+```
+
+這支需要 bash，Windows 請在 Git Bash 執行；找不到 bash 時會直接略過。它依賴 `sed` 等外部指令，所以沒有放進 `npm test`。
+
 ## 已知限制
 
-- `CLAUDE.md` 和 skill 裡寫的流程是**軟性**的：模型多半會照做，但不保證。需要「每次一定執行」的檢查要用 hook。目前硬性執行的只有：敏感檔案防護、驗收測試鎖定、工程師綠燈關卡；其餘（關卡 A / B、輪數上限、review）仍靠總指揮遵守流程。
+- `CLAUDE.md` 和 skill 裡寫的流程是**軟性**的：模型多半會照做，但不保證。需要「每次一定執行」的檢查要用 hook。目前硬性執行的只有：敏感檔案防護、驗收測試鎖定（含指令改檔還原）、工程師綠燈關卡；其餘（關卡 A / B、輪數上限、review）仍靠總指揮遵守流程。
+- 指令改檔還原是事後處理：指令執行完才比對。整個 `.claude/dev-team/` 被刪掉時沒有備份可比，要靠總指揮的 `gate.mjs check`（找不到 `gate.json` 會失敗）。敏感檔案（`.env` 等）只有 Edit / Write 的事前防護，用指令寫入攔不到。
+- 安裝 plugin 後，所有 session 每次執行 Bash / PowerShell 都會多跑一次 node（不是工程師就立刻結束）。
+- 綠燈關卡的數量檢查靠解析測試輸出的摘要行，支援 pytest、vitest、jest 的預設格式。指令把摘要關掉（例如 pytest `-qq`）或用其他框架時解析不到，會放行並記成 `pass-unparsed`，這時只剩 exit code 和 verifier 把關。
 - 綠燈關卡每次工程師結束都會多跑一次驗收測試；指令要只跑這次的驗收測試，不要放整個套件，否則每次都要等很久。hook timeout 是 600 秒。
 - Subagent 無法直接問你問題。需求分析師會把問題交回總指揮，再由總指揮問你。
 - 前後端平行開發時，如果會改到同一批檔案，總指揮會改成依序進行。真的要隔離的話，可以在 agent frontmatter 加 `isolation: worktree`（需要 git repo）。

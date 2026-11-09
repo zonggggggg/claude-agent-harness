@@ -283,6 +283,9 @@ test('硬性關卡：hooks.json 接上鎖定與綠燈關卡，流程會建立與
   const cmds = (event) => (hooks[event] ?? []).flatMap((g) => g.hooks).map((h) => h.command).join('\n');
   assert.match(cmds('PreToolUse'), /guard-locked-tests\.mjs/);
   assert.match(cmds('SubagentStop'), /require-green-on-stop\.mjs/);
+  const post = (hooks.PostToolUse ?? []).find((g) => g.hooks.some((h) => h.command.includes('check-locked-after-bash')));
+  assert.ok(post, 'PostToolUse 要接上指令改檔的還原檢查');
+  for (const tool of ['Bash', 'PowerShell']) assert.ok(new RegExp(post.matcher).test(tool), `還原檢查要涵蓋 ${tool}`);
   const stopHook = hooks.SubagentStop.flatMap((g) => g.hooks).find((h) => h.command.includes('require-green-on-stop'));
   assert.ok(stopHook.timeout >= 600, '綠燈關卡要跑測試，timeout 不能太短');
 
@@ -299,6 +302,38 @@ test('硬性關卡：hooks.json 接上鎖定與綠燈關卡，流程會建立與
   for (const name of ['backend-engineer', 'frontend-engineer']) {
     assert.match(role(name), /\*\*不要改用 Bash 或其他方式繞過\*\*/, `${name} 缺少不可繞過鎖定的紅線`);
   }
+});
+
+test('防針對測試寫死：verifier 與 code-reviewer 檢查、VERIFY 換值、平行要有檔案所有權、總指揮處理 LockCheck', () => {
+  const role = (name) => agents.find((a) => a.fields.name === name).body;
+  assert.match(role('verifier'), /\*\*檢查有沒有針對測試寫死答案\*\*/);
+  assert.match(role('verifier'), /\*\*產品程式碼針對測試寫死答案也是 FAIL\*\*/);
+  assert.match(role('code-reviewer'), /針對測試寫死：/);
+  assert.match(role('code-reviewer'), /資料庫（改動碰到 migration/);
+  assert.match(role('code-reviewer'), /\*\*只回報缺漏與 bug，不回報風格偏好\*\*/);
+  const verify = role('test-engineer').split(/^## /m).find((s) => s.startsWith('VERIFY 模式')) ?? '';
+  assert.match(verify, /\*\*新補的測試改用和 RED 不同的輸入值\*\*/);
+  assert.match(role('architect'), /\*\*檔案所有權\*\*/);
+
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  const section = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
+  assert.match(section(4), /清單完全沒有重疊/, '階段 4 平行要先確認檔案清單不重疊');
+  assert.match(section(4), /`LockCheck`/, '階段 4 要處理被還原過的工程師');
+  assert.match(body, /\*\*改了 `gate\.json` 一定要重跑 `gate\.mjs lock`\*\*/);
+});
+
+test('防 skip 繞過綠燈：gate.json 有 acceptanceCounts、test-engineer 記數量且不寫佔位 skip、reviewer 檢查測試設定', () => {
+  const role = (name) => agents.find((a) => a.fields.name === name).body;
+  assert.match(role('test-engineer'), /\*\*依角色分開的驗收測試數量\*\*/);
+  assert.match(role('test-engineer'), /\*\*不要寫 skip \/ xfail \/ todo 的佔位測試\*\*/);
+  assert.match(role('verifier'), /測試設定或標記被動過/);
+  assert.match(role('code-reviewer'), /測試設定：新增或修改 `conftest\.py`/);
+
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  const section = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
+  assert.match(body, /"acceptanceCounts"/, 'gate.json 格式要有 acceptanceCounts');
+  assert.match(section(3), /`acceptanceCounts` 照抄/, '階段 3 要寫入驗收測試數量');
+  assert.match(section(4), /`pass-unparsed`/, '階段 4 要處理數量檢查沒生效的情況');
 });
 
 test('plugin.json 與 marketplace.json 名稱一致', () => {

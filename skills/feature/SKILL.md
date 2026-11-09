@@ -54,11 +54,14 @@ disable-model-invocation: true
     "workdir": "docs/specs/<YYYYMMDD>-<slug>",
     "lockedTests": ["<驗收測試檔，相對專案根目錄>"],
     "acceptanceCommands": { "backend-engineer": "<只跑 BE 驗收測試的指令>", "frontend-engineer": "<只跑 FE 驗收測試的指令>" },
+    "acceptanceCounts": { "backend-engineer": <BE 驗收測試數>, "frontend-engineer": <FE 驗收測試數> },
     "maxStopBlocks": 3
   }
   ```
-  - **鎖定**：工程師用 Edit / Write 改 `lockedTests` 裡的檔案（或 `.claude/dev-team/` 底下的檔案）會被 PreToolUse hook 直接擋下。用 Bash 改檔攔不到，所以修正後仍要跑 `gate.mjs check`。
+  - **鎖定**：工程師用 Edit / Write 改 `lockedTests` 裡的檔案（或 `.claude/dev-team/` 底下的檔案）會被 PreToolUse hook 直接擋下。用 Bash 改檔事前攔不到，事後由下方的「指令改檔還原」處理；修正後仍要跑 `gate.mjs check` 當最後防線。
+  - **指令改檔還原**：`gate.mjs lock` 會把驗收測試和 `gate.json` 備份到 `.claude/dev-team/locked/`。工程師每跑完一次 Bash / PowerShell，PostToolUse hook 就比對雜湊，被改或被刪就從備份還原、回饋給工程師，並在 `activity.jsonl` 記一筆 `LockCheck`。所以**改了 `gate.json` 一定要重跑 `gate.mjs lock`**，否則下一次工程師跑指令時會被還原成舊版。
   - **綠燈關卡**：工程師要結束時，SubagentStop hook 自動跑 `acceptanceCommands` 裡該角色的指令，紅燈就擋下、把測試輸出丟回給它繼續修，同一個工程師最多擋 `maxStopBlocks` 次。回報狀態是 `BLOCKED` / `NEEDS_CONTEXT` 時不擋。
+    exit 0 不一定是真的綠燈（例如新增 `conftest.py` 把測試全部 skip，pytest 一樣 exit 0），所以 hook 還會解析測試摘要：有 skipped / deselected / xfailed / xpassed / todo，或通過數少於 `acceptanceCounts`，一樣擋下。解析不到摘要時放行，但記成 `pass-unparsed`，代表數量檢查沒生效。
   - 一個專案同時只有一份 `gate.json`，對應正在進行的那個工作資料夾。沒有這個檔時兩個 hook 都不做事。
 - **專案測試方式**：專案 `CLAUDE.md` 的 `## 測試方式` 段落（測試指令、執行環境、環境變數、需要的服務）是所有角色跑測試的依據，讓每個專案只摸索一次。呼叫 `architect`、`test-engineer`、工程師時提醒它們先讀這段。
 - **派工 prompt 只放這個角色需要的東西**：這次任務在流程中的位置（一行）、工作資料夾路徑與要讀的檔案 / 段落、檔案裡沒有但它需要的決策（引用 `progress.md` 的「總指揮裁決」）、回報檔路徑。**不貼對話歷史、前面角色的完整回報或檔案內容**——貼進 prompt 的東西和 subagent 的回報都會一直留在你的 context，之後每回合都要重讀。
@@ -114,7 +117,7 @@ disable-model-invocation: true
    - **有預期值說不出來源**（對照表的「預期值來源」空白，或寫不出 spec / fixture / 計算依據）：驗收測試會鎖定，錯的預期值等於把錯的行為鎖進程式
 3. 標為 `MANUAL` 的 AC（無法自動化，例如純視覺、需要真實外部服務）：把原因列給使用者，之後由驗收階段人工確認。
 4. 這批驗收測試從此鎖定：工程師不能改。要改只能由 `test-engineer` 改，而且要有明確理由（例如契約經使用者同意後變更）。
-   建立 `.claude/dev-team/gate.json`（格式見「共同約定」）：`lockedTests` 填 RED 對照表裡的驗收測試檔，`acceptanceCommands` 照抄 test-report.md RED 區塊「依角色分開的驗收測試指令」。
+   建立 `.claude/dev-team/gate.json`（格式見「共同約定」）：`lockedTests` 填 RED 對照表裡的驗收測試檔，`acceptanceCommands` 照抄 test-report.md RED 區塊「依角色分開的驗收測試指令」，`acceptanceCounts` 照抄「依角色分開的驗收測試數量」。
    接著跑 `gate.mjs lock` 記下每個檔案的 sha256，把輸出摘要寫進 `progress.md` 的「階段紀錄」，之後每輪修正都跑 `gate.mjs check` 比對。
    之後 `test-engineer` 經同意改了驗收測試 → 更新 `lockedTests` 後重跑 `gate.mjs lock`，並把原因寫進「總指揮裁決」。
 5. 回報附了「建議加入 CLAUDE.md 的測試方式」草稿 → 給使用者看，問要不要加入專案 `CLAUDE.md`。**使用者同意才寫入**，只新增或更新 `## 測試方式` 這一段，不動其他內容。
@@ -122,12 +125,14 @@ disable-model-invocation: true
 ### 階段 4：實作（讓測試變綠）
 1. 依 `design.md` 的任務清單分派：`[BE]` → `backend-engineer`，`[FE]` → `frontend-engineer`。
    prompt 裡要附上：`test-report.md` 路徑、要讓哪些驗收測試變綠、執行指令與前置條件、回報檔路徑。
-2. **前後端沒有共用檔案且契約已定** → 在**同一則訊息**同時呼叫兩者，平行進行。
-   有依賴或可能改到同一批檔案 → 依序進行。
+2. **design.md 列出兩邊的檔案、清單完全沒有重疊，而且契約已定** → 在**同一則訊息**同時呼叫兩者，平行進行。
+   檔案清單沒列、有重疊、共用檔案沒指定歸屬，或有依賴 → 依序進行。不確定就依序：平行只省時間，兩邊做出衝突的隱性決定（錯誤格式、命名）要多花一輪修正。
 3. 檢查工程師回報檔的證據段落：每段新增邏輯都要有 **RED 證據**（測試名稱 + 失敗訊息）和 **GREEN 證據**。缺 RED 證據又沒有列為「TDD 例外」→ 退回補做。「TDD 例外」清單列給使用者看。
 4. 工程師認為驗收測試寫錯 → 停下來判斷：測試違反 spec / 契約 → 交回 `test-engineer` 修；測試正確 → 工程師改程式。判斷不了就問使用者。
 5. 工程師回報偏離設計或契約有問題 → 停下來，先找架構師或使用者決定，不要讓工程師自行改契約。
 6. 工程師回報 `DONE`，但 `.claude/dev-team/activity.jsonl` 裡它最後一筆 `StopGate` 是 `fail-released`（擋滿次數後被放行）→ 視為 `BLOCKED`，驗收測試其實還是紅的，照卡住的規則處理。
+   最後一筆 `StopGate` 是 `pass-unparsed`（測試輸出裡找不到摘要行，數量與 skip 檢查沒生效）→ 讀回報檔 GREEN 證據裡的通過數與 skip 數，派 `verifier` 時請它確認驗收測試真的有執行；之後調整驗收測試指令讓它印出摘要（例如 pytest 不要加 `-qq`）。
+7. `activity.jsonl` 有這個工程師的 `LockCheck` 紀錄（它用指令改了鎖定測試或 `gate.json`，hook 已自動還原）→ 寫進「總指揮裁決」，之後派 `verifier` 和 `code-reviewer` 時提醒它們特別檢查這個工程師的改動有沒有針對測試寫死答案。
 
 ### 階段 5：測試驗證
 1. 呼叫 `test-engineer`，模式 `VERIFY`：重跑驗收測試、確認沒有被改弱、補邊界條件與錯誤路徑、跑完整測試套件確認沒有 regression。

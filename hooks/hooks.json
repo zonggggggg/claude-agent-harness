@@ -1,5 +1,5 @@
 {
-  "description": "dev-team harness：敏感檔案寫入防護 + 驗收測試鎖定 + 工程師綠燈關卡 + 角色活動紀錄",
+  "description": "dev-team harness：敏感檔案寫入防護 + 驗收測試鎖定（含指令改檔的事後還原）+ 工程師綠燈關卡 + 角色活動紀錄",
   "hooks": {
     "PreToolUse": [
       {
@@ -13,6 +13,18 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/guard-locked-tests.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-locked-after-bash.mjs\"",
             "timeout": 10
           }
         ]
