@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { comparablePath, isEngineer, roleOf } from '../hooks/scripts/gate-state.mjs';
@@ -59,8 +59,10 @@ test('roleOf 去掉 plugin 前綴；只有前後端工程師算 engineer', () =>
 
 test('comparablePath 統一斜線與大小寫，相對路徑以專案根目錄展開', () => {
   assert.equal(comparablePath('D:\\proj', 'D:\\Proj\\Backend\\a.py'), 'd:/proj/backend/a.py');
-  assert.equal(comparablePath('/proj', 'backend/a.py'), '/proj/backend/a.py');
-  assert.equal(comparablePath('/proj', '/proj/backend/a.py'), comparablePath('/proj', 'backend/a.py'));
+  // 根目錄用當前平台的絕對路徑（Windows 上 /proj 會被展開成 d:/proj）
+  const root = resolve('/proj');
+  assert.ok(comparablePath(root, 'backend/a.py').endsWith('/proj/backend/a.py'));
+  assert.equal(comparablePath(root, join(root, 'backend', 'a.py')), comparablePath(root, 'backend/a.py'));
 });
 
 // --- guard-locked-tests ---
