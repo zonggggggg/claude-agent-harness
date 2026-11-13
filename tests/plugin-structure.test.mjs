@@ -139,6 +139,60 @@ test('design 範本的第一個任務是 TEST，實作任務依賴它', () => {
   }
 });
 
+test('輸入與錯誤處理在 spec / design 先定：範本有欄位，分析師與架構師要填', () => {
+  const spec = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'spec.md'), 'utf8');
+  const input = spec.split(/^## /m).find((s) => s.startsWith('輸入與錯誤處理')) ?? '';
+  for (const item of ['前後空白、換行', '控制字元', '長度上限', '多個錯誤同時發生', '錯誤訊息原文']) {
+    assert.ok(input.includes(item), `spec 範本「輸入與錯誤處理」缺少「${item}」`);
+  }
+  const design = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md'), 'utf8');
+  const order = design.split(/^## /m).find((s) => s.startsWith('輸入處理與驗證順序')) ?? '';
+  for (const item of ['正規化步驟', '驗證順序', '錯誤碼與 spec 訊息的對應']) {
+    assert.ok(order.includes(item), `design 範本「輸入處理與驗證順序」缺少「${item}」`);
+  }
+  const role = (name) => agents.find((a) => a.fields.name === name).body;
+  assert.match(role('requirements-analyst'), /\*\*輸入與錯誤處理\*\*/);
+  assert.match(role('architect'), /\*\*輸入處理與驗證順序\*\*/);
+});
+
+test('流程中途的待決策：登記、退給負責角色寫備忘、一次問完不限題數', () => {
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  assert.match(body, /\*\*流程中途的待決策\*\*/);
+  assert.match(body, /\*\*退給負責的角色研究，不要自己查\*\*/);
+  assert.match(body, /`\[行為\]`.*→ `requirements-analyst`.*`\[技術\]`.*→ `architect`/);
+  assert.match(body, /\*\*一次問完\*\*/);
+  assert.match(body, /\*\*不限題數\*\*/);
+  // 三種分類：有依據照做、只影響內部先裁決、影響使用者 / 契約 / 資料 / 鎖定測試一定問
+  assert.match(body, /\*\*① 有依據\*\*/);
+  assert.match(body, /\*\*② 沒依據，但明顯、只影響內部\*\*/);
+  assert.match(body, /\*\*就算很明顯也要問使用者\*\*/);
+  assert.match(body, /分不清是 ② 還是 ③ 就當 ③/);
+  assert.match(body, /\*\*決定權永遠在使用者\*\*/);
+  assert.match(body, /\*\*負責角色查完仍無法建議\*\*.*不限選擇題/);
+  const stage = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
+  assert.match(stage(4), /照「流程中途的待決策」處理/, '階段 4 遇到待決策要照規則處理');
+  assert.match(stage(8), /② 類裁決/, '階段 8 要把先裁決的 ② 類列給使用者確認');
+
+  const progress = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'progress.md'), 'utf8');
+  assert.match(progress, /^## 待決策$/m, 'progress 範本缺少「待決策」');
+
+  for (const name of ['requirements-analyst', 'architect']) {
+    const memo = agents.find((a) => a.fields.name === name).body.split(/^## /m).find((s) => s.startsWith('決策備忘')) ?? '';
+    assert.match(memo, /decisions\/<編號>-<slug>\.md/, `${name} 缺少決策備忘的檔案位置`);
+    assert.match(memo, /選項 2–3 個/, `${name} 決策備忘缺少選項`);
+    assert.match(memo, /`NEEDS_DECISION`/, `${name} 決策備忘缺少回報狀態`);
+    assert.match(memo, /\*\*查完仍無法判斷就寫「無建議」\*\*/, `${name} 決策備忘沒有允許「無建議」`);
+  }
+  for (const name of ['backend-engineer', 'frontend-engineer', 'test-engineer', 'code-reviewer']) {
+    assert.match(agents.find((a) => a.fields.name === name).body, /\*\*待決策\*\*.*`\[行為\]`.*`\[技術\]`/s, `${name} 沒有標註待決策類型`);
+  }
+  // 只影響內部的技術細節，工程師可以先做並標出來，避免多一輪派工；行為類不行
+  for (const name of ['backend-engineer', 'frontend-engineer']) {
+    assert.match(agents.find((a) => a.fields.name === name).body, /「\*\*已先採用：<做法>\*\*」.*`\[行為\]`，或會影響上述任何一項的，不要先做/s, `${name} 缺少「已先採用」的界線`);
+  }
+  assert.match(body, /標「已先採用」的項目就是它的提議/, '總指揮要處理工程師「已先採用」的項目');
+});
+
 test('design 範本寫明測試前置條件，任務細節有參照的既有實作', () => {
   const text = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md'), 'utf8');
   const testing = text.split(/^## /m).find((s) => s.startsWith('測試策略')) ?? '';
