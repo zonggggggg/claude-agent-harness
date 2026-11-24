@@ -193,6 +193,46 @@ test('流程中途的待決策：登記、退給負責角色寫備忘、一次�
   assert.match(body, /標「已先採用」的項目就是它的提議/, '總指揮要處理工程師「已先採用」的項目');
 });
 
+test('效能在設計時決定：spec 有資料量、design 有演算法與估算，下游照設計做與檢查', () => {
+  const spec = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'spec.md'), 'utf8');
+  const volume = spec.split(/^## /m).find((s) => s.startsWith('資料量與上限')) ?? '';
+  for (const item of ['最大', '同時使用的人數', '業務上限', '等待方式']) {
+    assert.ok(volume.includes(item), `spec 範本「資料量與上限」缺少「${item}」`);
+  }
+  const design = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md'), 'utf8');
+  const algo = design.split(/^## /m).find((s) => s.startsWith('核心邏輯與演算法')) ?? '';
+  for (const item of ['規模', '步驟', '資料結構', '複雜度', '查詢次數', '計算位置', '最大規模估算', '考慮過的替代做法']) {
+    assert.ok(algo.includes(item), `design 範本「核心邏輯與演算法」缺少「${item}」`);
+  }
+
+  const role = (name) => agents.find((a) => a.fields.name === name).body;
+  assert.match(role('requirements-analyst'), /\*\*資料量與業務上限\*\*/);
+  const architect = role('architect');
+  assert.match(architect, /\*\*核心邏輯與演算法\*\*/);
+  assert.match(architect, /\*\*先想資料量變大時怎麼做，再決定流程\*\*/);
+  assert.match(architect, /不接受 O\(n²\) 或 O\(n × m\)/);
+  assert.match(architect, /\*\*看高峰不看平均\*\*/);
+  assert.match(architect, /\*\*估算超過額度就改演算法\*\*/);
+  assert.match(architect, /\*\*單一請求的額度\*\*（pod 記憶體 ÷ 同一個 pod 的 worker 數/);
+  for (const name of ['backend-engineer', 'frontend-engineer']) {
+    assert.match(role(name), /\*\*演算法照設計\*\*/, `${name} 沒有要求照設計的演算法寫`);
+  }
+  const reviewer = role('code-reviewer');
+  assert.match(reviewer, /\*\*效能（照設計）\*\*/);
+  assert.match(reviewer, /\*\*只回報在 diff 裡看得到證據的\*\*/);
+  assert.match(reviewer, /非同步環境（gevent、async）/);
+  assert.match(role('security-reviewer'), /由 code-reviewer 負責/, 'security-reviewer 要和 code-reviewer 分工');
+
+  const { body } = frontmatter(join(ROOT, 'skills', 'feature', 'SKILL.md'));
+  assert.match(body, /\*\*專案執行環境規範\*\*/);
+  const runtime = body.split(/^- /m).find((s) => s.startsWith('**專案執行環境規範**')) ?? '';
+  assert.match(runtime, /\*\*使用者同意才寫入\*\*/, '執行環境規範草稿要使用者同意才寫入');
+  assert.match(runtime, /\*\*單一請求的記憶體與 CPU 額度\*\*/);
+  const stage = (n) => body.split(/^### /m).find((s) => s.startsWith(`階段 ${n}：`)) ?? '';
+  assert.match(stage(0), /會處理隨資料量成長的資料.*\*\*不算小\*\*/s, '會成長的資料不能走小任務');
+  assert.match(stage(2), /演算法摘要/, '關卡 B 要附演算法摘要');
+});
+
 test('design 範本寫明測試前置條件，任務細節有參照的既有實作', () => {
   const text = readFileSync(join(ROOT, 'skills', 'feature', 'templates', 'design.md'), 'utf8');
   const testing = text.split(/^## /m).find((s) => s.startsWith('測試策略')) ?? '';
